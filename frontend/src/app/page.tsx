@@ -19,6 +19,12 @@ interface VisualAsset {
   image_data: string;
 }
 
+interface DatasetLink {
+  url: string;
+  source: string;
+  context: string;
+}
+
 interface PaperEntry {
   paper_id: string;
   status: "extracting" | "complete";
@@ -26,6 +32,7 @@ interface PaperEntry {
   content: string | null;
   skipped_pages: number[];
   research_methods: string | null;
+  dataset_links: DatasetLink[];
   visual_assets: VisualAsset[];
 }
 
@@ -414,6 +421,37 @@ export default function Home() {
                 </DashboardSection>
               )}
 
+              {/* Dataset Links */}
+              {paper.dataset_links && paper.dataset_links.length > 0 && (
+                <DashboardSection title="Dataset Links Found" icon="content">
+                  <div className="space-y-3">
+                    {paper.dataset_links.map((link, i) => (
+                      <div
+                        key={i}
+                        className="rounded-lg bg-gray-800/50 border border-gray-700/40 p-4 space-y-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-400 border border-blue-500/20">
+                            {link.source}
+                          </span>
+                          <a
+                            href={link.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-blue-400 hover:text-blue-300 underline underline-offset-2 truncate max-w-md"
+                          >
+                            {link.url}
+                          </a>
+                        </div>
+                        <p className="text-xs text-gray-500 italic truncate">
+                          &ldquo;...{link.context}...&rdquo;
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </DashboardSection>
+              )}
+
               {/* Content Preview */}
               {contentPreview && (
                 <DashboardSection title="Content Preview" icon="content">
@@ -463,6 +501,34 @@ export default function Home() {
                       )}
                     </button>
                   )}
+                </DashboardSection>
+              )}
+
+              {/* Figures & Images */}
+              {paper.visual_assets && paper.visual_assets.length > 0 && (
+                <DashboardSection title="Figures & Images" icon="content">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    {paper.visual_assets.map((asset, i) => (
+                      <div
+                        key={i}
+                        className="relative group rounded-lg overflow-hidden border border-gray-700/50 bg-white"
+                      >
+                        <img
+                          src={`data:image/png;base64,${asset.image_data}`}
+                          alt={`Figure from page ${asset.page_number}`}
+                          className="w-full h-auto"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
+                          <span className="text-xs text-white/80 font-medium">
+                            Page {asset.page_number}
+                          </span>
+                          <span className="text-xs text-white/50 ml-2">
+                            {asset.width}×{asset.height}px
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </DashboardSection>
               )}
 

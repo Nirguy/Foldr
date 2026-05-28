@@ -18,6 +18,7 @@ def create_entry(paper_id: str, raw_bytes: bytes) -> None:
             "content": None,
             "skipped_pages": [],
             "research_methods": None,
+            "dataset_links": [],
             "visual_assets": [],
         }
 

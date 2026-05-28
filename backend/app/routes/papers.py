@@ -36,6 +36,7 @@ def get_paper(paper_id: str):
         content=entry.get("content"),
         skipped_pages=entry.get("skipped_pages", []),
         research_methods=entry.get("research_methods"),
+        dataset_links=entry.get("dataset_links", []),
         visual_assets=entry.get("visual_assets", []),
     )
 

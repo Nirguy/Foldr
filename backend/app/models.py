@@ -23,6 +23,14 @@ class VisualAsset(BaseModel):
     image_data: str  # base64-encoded PNG
 
 
+class DatasetLink(BaseModel):
+    """A dataset URL found in the paper."""
+
+    url: str
+    source: str  # Repository name (e.g., "Zenodo", "GitHub")
+    context: str  # Surrounding text for context
+
+
 class PaperEntry(BaseModel):
     """Full extraction result for a single paper."""
 
@@ -32,6 +40,7 @@ class PaperEntry(BaseModel):
     content: Optional[str] = None
     skipped_pages: list[int] = Field(default_factory=list)
     research_methods: Optional[str] = None
+    dataset_links: list[DatasetLink] = Field(default_factory=list)
     visual_assets: list[VisualAsset] = Field(default_factory=list)
 
 

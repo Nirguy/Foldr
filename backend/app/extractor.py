@@ -4,7 +4,9 @@ import base64
 import re
 from datetime import datetime
 
+import cv2
 import fitz  # PyMuPDF
+import numpy as np
 
 
 def extract_metadata(pdf_bytes: bytes) -> dict | None:
@@ -430,25 +432,124 @@ def extract_research_methods(full_text: str) -> str | None:
     return section_text if section_text else None
 
 
+def extract_dataset_links(full_text: str) -> list[dict]:
+    """Extract dataset URLs from the paper text.
+
+    Scans for URLs pointing to known dataset repositories (Zenodo, Figshare,
+    GitHub, Kaggle, Dryad, Dataverse, OSF, etc.) as well as generic URLs
+    that contain dataset-related keywords.
+
+    Args:
+        full_text: The full extracted text content of the paper.
+
+    Returns:
+        A list of dicts with keys: url, source (repository name), context (surrounding text).
+    """
+    if not full_text:
+        return []
+
+    # Known dataset repository domains
+    dataset_domains = {
+        "zenodo.org": "Zenodo",
+        "figshare.com": "Figshare",
+        "github.com": "GitHub",
+        "kaggle.com": "Kaggle",
+        "datadryad.org": "Dryad",
+        "dryad.org": "Dryad",
+        "dataverse.harvard.edu": "Harvard Dataverse",
+        "dataverse.org": "Dataverse",
+        "osf.io": "OSF",
+        "data.mendeley.com": "Mendeley Data",
+        "ieee-dataport.org": "IEEE DataPort",
+        "pangaea.de": "PANGAEA",
+        "openml.org": "OpenML",
+        "huggingface.co": "Hugging Face",
+        "archive.ics.uci.edu": "UCI ML Repository",
+    }
+
+    # Dataset-related keywords in URLs
+    dataset_keywords = ["dataset", "data", "download", "repository", "supplement"]
+
+    # Find all URLs in the text
+    url_pattern = re.compile(
+        r'https?://[^\s<>\"\'\)\]\},;]+',
+        re.IGNORECASE,
+    )
+
+    found_links: list[dict] = []
+    seen_urls: set[str] = set()
+
+    for match in url_pattern.finditer(full_text):
+        url = match.group(0).rstrip('.')  # Remove trailing periods
+
+        # Deduplicate
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
+        # Check if URL matches a known dataset domain
+        source = None
+        for domain, name in dataset_domains.items():
+            if domain in url.lower():
+                source = name
+                break
+
+        # If not a known domain, check for dataset keywords in the URL
+        if source is None:
+            url_lower = url.lower()
+            if any(kw in url_lower for kw in dataset_keywords):
+                source = "Unknown Repository"
+            else:
+                continue  # Skip URLs that don't look like datasets
+
+        # Extract surrounding context (50 chars before and after)
+        start = max(0, match.start() - 80)
+        end = min(len(full_text), match.end() + 80)
+        context = full_text[start:end].replace("\n", " ").strip()
+
+        found_links.append({
+            "url": url,
+            "source": source,
+            "context": context,
+        })
+
+    return found_links
+
+
 def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
-    """Render each page of a PDF as a PNG image at 150 DPI and return as base64.
+    """Extract figures from a PDF using caption-anchored detection.
 
-    Uses PyMuPDF to render each page as a pixmap at 150 DPI, converts to PNG bytes,
-    then base64-encodes the result. Each page produces a VisualAsset dict with
-    page_number (1-indexed), width, height, and image_data.
+    Strategy: Find "Fig. X" / "Figure X" captions via text extraction,
+    then extract the visual region above each caption by scanning upward
+    for whitespace boundaries.
 
-    Pages that fail to render are silently skipped. If all pages fail, returns
-    an empty list.
+    Phase 1: Find figure captions using PyMuPDF text extraction
+    Phase 2: Render page at 300 DPI, scan upward from caption to find figure bounds
+    Phase 3: Crop the figure region (including caption)
 
     Args:
         pdf_bytes: Raw PDF file bytes.
 
     Returns:
-        A list of VisualAsset dicts ordered by ascending page_number.
+        A list of dicts with page_number, width, height, and image_data (base64 PNG).
     """
-    DPI = 150
-    zoom = DPI / 72  # PyMuPDF default is 72 DPI
+    DPI = 300
+    zoom = DPI / 72
     matrix = fitz.Matrix(zoom, zoom)
+
+    # Caption detection pattern
+    CAPTION_PATTERN = re.compile(
+        r'(Extended\s+Data\s+)?Fig(ure)?\.?\s*\d+',
+        re.IGNORECASE
+    )
+
+    # Whitespace detection parameters
+    WHITE_THRESHOLD = 245
+    WHITE_ROW_RATIO = 0.95
+    MIN_GAP_HEIGHT = 8  # pixels — minimum whitespace band to count as boundary
+    MAX_UPWARD_SEARCH = 2000  # pixels — max distance to search upward
+    PADDING = 8  # pixels
+    MIN_FIG_HEIGHT = 100  # pixels — minimum figure height to keep
 
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -459,26 +560,258 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
 
     try:
         for page_index in range(len(doc)):
-            page_number = page_index + 1  # 1-indexed
+            page_number = page_index + 1
             try:
                 page = doc[page_index]
-                pixmap = page.get_pixmap(matrix=matrix)
-                png_bytes = pixmap.tobytes("png")
-                image_data = base64.b64encode(png_bytes).decode("ascii")
 
-                visual_assets.append({
-                    "page_number": page_number,
-                    "width": pixmap.width,
-                    "height": pixmap.height,
-                    "image_data": image_data,
-                })
+                # === Phase 1: Find figure captions ===
+                captions = _find_figure_captions(page, CAPTION_PATTERN)
+
+                if not captions:
+                    continue
+
+                # === Phase 2: Render page and extract figure regions ===
+                pixmap = page.get_pixmap(matrix=matrix)
+                img_height = pixmap.height
+                img_width = pixmap.width
+
+                # Convert to numpy array
+                img_data = pixmap.samples
+                n = pixmap.n
+                if n == 4:
+                    img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(
+                        img_height, img_width, 4
+                    ).copy()
+                    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
+                elif n == 3:
+                    img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(
+                        img_height, img_width, 3
+                    ).copy()
+                    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                else:
+                    img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(
+                        img_height, img_width
+                    ).copy()
+                    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
+
+                gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+
+                # Process each caption
+                for caption in captions:
+                    try:
+                        # Scale caption bbox to pixel coordinates at render DPI
+                        cap_x0 = int(caption["bbox"][0] * zoom)
+                        cap_y0 = int(caption["bbox"][1] * zoom)
+                        cap_x1 = int(caption["bbox"][2] * zoom)
+                        cap_y1 = int(caption["bbox"][3] * zoom)
+
+                        # Figure region is ABOVE the caption
+                        # Search upward from caption top to find whitespace boundary
+                        fig_bottom = cap_y0  # top of caption = bottom of figure
+
+                        # Determine horizontal bounds — use caption width but expand
+                        # to capture full-width figures
+                        fig_x0 = max(0, cap_x0 - 20)
+                        fig_x1 = min(img_width, cap_x1 + 20)
+
+                        # For two-column papers, figure might span the column
+                        # Expand to check if figure is wider than caption
+                        # Look at the row just above caption for content bounds
+                        if fig_bottom > 10:
+                            check_row = gray[fig_bottom - 10:fig_bottom, :]
+                            col_has_content = np.any(check_row < 200, axis=0)
+                            content_cols = np.where(col_has_content)[0]
+                            if len(content_cols) > 0:
+                                fig_x0 = max(0, int(content_cols[0]) - 10)
+                                fig_x1 = min(img_width, int(content_cols[-1]) + 10)
+
+                        # Search upward for whitespace boundary
+                        fig_top = _find_top_boundary(
+                            gray, fig_bottom, fig_x0, fig_x1,
+                            WHITE_THRESHOLD, WHITE_ROW_RATIO,
+                            MIN_GAP_HEIGHT, MAX_UPWARD_SEARCH
+                        )
+
+                        # Include caption in the crop
+                        crop_bottom = min(img_height, cap_y1 + PADDING)
+
+                        # Validate figure height
+                        fig_height = crop_bottom - fig_top
+                        if fig_height < MIN_FIG_HEIGHT:
+                            continue
+
+                        # Apply padding
+                        crop_top = max(0, fig_top - PADDING)
+                        crop_x0 = max(0, fig_x0 - PADDING)
+                        crop_x1 = min(img_width, fig_x1 + PADDING)
+
+                        # Crop from original image
+                        crop = img_bgr[crop_top:crop_bottom, crop_x0:crop_x1]
+
+                        if crop.shape[0] < 80 or crop.shape[1] < 100:
+                            continue
+
+                        # Encode as PNG
+                        success, png_bytes = cv2.imencode(".png", crop)
+                        if not success:
+                            continue
+
+                        image_data = base64.b64encode(png_bytes.tobytes()).decode("ascii")
+
+                        visual_assets.append({
+                            "page_number": page_number,
+                            "width": crop.shape[1],
+                            "height": crop.shape[0],
+                            "image_data": image_data,
+                        })
+                    except Exception:
+                        continue
+
             except Exception:
-                # Skip pages that fail to render
                 continue
     finally:
         doc.close()
 
     return visual_assets
+
+
+def _find_figure_captions(page, pattern) -> list[dict]:
+    """Find figure captions on a page using text extraction.
+
+    Searches for text matching "Fig. X", "Figure X", "Extended Data Fig. X" etc.
+    Returns a list of dicts with 'text', 'bbox' (in PDF points), and 'label'.
+    """
+    captions = []
+    text_dict = page.get_text("dict")
+
+    for block in text_dict.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+
+        block_text = ""
+        block_bbox = block.get("bbox")
+
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                block_text += span.get("text", "")
+
+        block_text = block_text.strip()
+
+        # Check if this block starts with a figure caption pattern
+        match = pattern.match(block_text)
+        if match:
+            captions.append({
+                "text": block_text[:100],  # first 100 chars
+                "bbox": block_bbox,
+                "label": match.group(0),
+            })
+
+    return captions
+
+
+def _find_top_boundary(
+    gray: np.ndarray,
+    start_y: int,
+    x0: int,
+    x1: int,
+    white_threshold: int,
+    white_ratio: float,
+    min_gap_height: int,
+    max_search: int,
+) -> int:
+    """Scan upward from start_y to find the top boundary of a figure.
+
+    Looks for a horizontal band of whitespace (rows where most pixels are white)
+    within the x0-x1 column range. Returns the y coordinate of the figure top.
+    """
+    gap_count = 0
+    search_limit = max(0, start_y - max_search)
+
+    for y in range(start_y - 1, search_limit, -1):
+        # Check if this row is mostly white in the figure's column range
+        row = gray[y, x0:x1]
+        if len(row) == 0:
+            continue
+
+        white_pixels = np.sum(row >= white_threshold)
+        ratio = white_pixels / len(row)
+
+        if ratio >= white_ratio:
+            gap_count += 1
+            if gap_count >= min_gap_height:
+                # Found a whitespace band — figure top is just below it
+                return y + min_gap_height
+        else:
+            gap_count = 0
+
+    # No whitespace found — use the search limit
+    return search_limit
+
+
+def _cluster_rects(rects: list, margin: float = 5) -> list:
+    """Cluster nearby rectangles into larger bounding regions.
+
+    Groups rectangles that overlap or are within `margin` points of each other,
+    returning the bounding box of each cluster.
+    """
+    if not rects:
+        return []
+
+    # Sort by y0 then x0
+    sorted_rects = sorted(rects, key=lambda r: (r.y0, r.x0))
+    clusters: list[fitz.Rect] = []
+
+    for rect in sorted_rects:
+        merged = False
+        for i, cluster in enumerate(clusters):
+            # Check if rect is near/overlapping this cluster
+            expanded = fitz.Rect(
+                cluster.x0 - margin,
+                cluster.y0 - margin,
+                cluster.x1 + margin,
+                cluster.y1 + margin,
+            )
+            if expanded.intersects(rect):
+                # Merge into this cluster
+                clusters[i] = cluster | rect  # Union
+                merged = True
+                break
+        if not merged:
+            clusters.append(fitz.Rect(rect))
+
+    # Second pass: merge clusters that now overlap after expansion
+    changed = True
+    while changed:
+        changed = False
+        new_clusters: list[fitz.Rect] = []
+        for cluster in clusters:
+            merged = False
+            for i, existing in enumerate(new_clusters):
+                expanded = fitz.Rect(
+                    existing.x0 - margin,
+                    existing.y0 - margin,
+                    existing.x1 + margin,
+                    existing.y1 + margin,
+                )
+                if expanded.intersects(cluster):
+                    new_clusters[i] = existing | cluster
+                    merged = True
+                    changed = True
+                    break
+            if not merged:
+                new_clusters.append(cluster)
+        clusters = new_clusters
+
+    return clusters
+
+
+def _merge_overlapping_rects(rects: list, margin: float = 10) -> list:
+    """Merge overlapping or nearby rectangles into unified regions."""
+    if not rects:
+        return []
+
+    # Use the clustering approach
+    return _cluster_rects(rects, margin=margin)
 
 
 def run_extraction(paper_id: str) -> None:
@@ -525,7 +858,14 @@ def run_extraction(paper_id: str) -> None:
     except Exception:
         update_entry(paper_id, research_methods=None)
 
-    # Step 4: Extract visual assets
+    # Step 4: Extract dataset links (uses extracted content)
+    try:
+        dataset_links = extract_dataset_links(content) if content else []
+        update_entry(paper_id, dataset_links=dataset_links)
+    except Exception:
+        update_entry(paper_id, dataset_links=[])
+
+    # Step 5: Extract visual assets
     try:
         visual_assets = extract_visual_assets(raw_bytes)
         update_entry(paper_id, visual_assets=visual_assets)
