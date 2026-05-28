@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   ArticleAnalysis,
   RankingWeights,
@@ -8,6 +8,7 @@ import {
   computeRankingScore,
 } from "@/types/article";
 import ArticleCard from "./ArticleCard";
+import Tooltip from "./Tooltip";
 
 interface WeightSliderProps {
   label: string;
@@ -20,7 +21,9 @@ function WeightSlider({ label, value, onChange }: WeightSliderProps) {
     <div className="flex flex-col gap-1 min-w-0">
       <div className="flex justify-between text-xs text-gray-400">
         <span>{label}</span>
-        <span className="font-mono text-blue-400">{(value * 100).toFixed(0)}%</span>
+        <span className="font-mono text-blue-400">
+          {(value * 100).toFixed(0)}%
+        </span>
       </div>
       <input
         type="range"
@@ -46,7 +49,10 @@ export default function ArticleRankingTable({
   const [weights, setWeights] = useState<RankingWeights>(DEFAULT_WEIGHTS);
   const [showWeights, setShowWeights] = useState(false);
 
-  // Normalise weights so they always sum to 1
+  // Track which article ids changed rank so we can flash them
+  const prevRankRef = useRef<Record<string, number>>({});
+  const [changedIds, setChangedIds] = useState<Set<string>>(new Set());
+
   function setWeight(key: keyof RankingWeights, raw: number) {
     setWeights((prev) => {
       const next = { ...prev, [key]: raw };
@@ -67,41 +73,73 @@ export default function ArticleRankingTable({
       .sort((a, b) => b.score - a.score);
   }, [articles, weights]);
 
-  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
-  const weightsBalanced = Math.abs(totalWeight - 1) < 0.01;
+  // Detect rank changes and flash affected cards
+  useEffect(() => {
+    const newRanks: Record<string, number> = {};
+    const changed = new Set<string>();
+
+    ranked.forEach(({ article }, idx) => {
+      const newRank = idx + 1;
+      newRanks[article.id] = newRank;
+      if (
+        prevRankRef.current[article.id] !== undefined &&
+        prevRankRef.current[article.id] !== newRank
+      ) {
+        changed.add(article.id);
+      }
+    });
+
+    if (changed.size > 0) {
+      setChangedIds(changed);
+      // Clear the flash after 1.2s
+      const t = setTimeout(() => setChangedIds(new Set()), 1200);
+      return () => clearTimeout(t);
+    }
+
+    prevRankRef.current = newRanks;
+  }, [ranked]);
+
+  // Keep prevRankRef in sync after flash clears
+  useEffect(() => {
+    const newRanks: Record<string, number> = {};
+    ranked.forEach(({ article }, idx) => {
+      newRanks[article.id] = idx + 1;
+    });
+    prevRankRef.current = newRanks;
+  }, [ranked]);
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* ── Weight customisation panel ── */}
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+    <div className="flex flex-col gap-3">
+      {/* ── Weight panel ── */}
+      <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
         <button
           onClick={() => setShowWeights((v) => !v)}
-          className="w-full flex items-center justify-between px-5 py-3 hover:bg-gray-800/40 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-800/40 transition-colors"
           aria-expanded={showWeights}
         >
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-gray-200">
               Ranking Weights
             </span>
-            {!weightsBalanced && (
-              <span className="text-xs text-amber-400 border border-amber-700 rounded-full px-2 py-0.5">
-                Normalising…
-              </span>
-            )}
+            <Tooltip content="Drag the sliders to change how much each dimension contributes to the Rank score. Weights are automatically normalised to sum to 100%.">
+              <span className="text-[11px] text-gray-600 cursor-help">ⓘ</span>
+            </Tooltip>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex gap-3 text-xs text-gray-500">
-              <span>Credibility {(weights.credibility * 100).toFixed(0)}%</span>
-              <span>Consensus {(weights.consensus * 100).toFixed(0)}%</span>
-              <span>Methodology {(weights.methodology * 100).toFixed(0)}%</span>
+              <span>Cred {(weights.credibility * 100).toFixed(0)}%</span>
+              <span>Cons {(weights.consensus * 100).toFixed(0)}%</span>
+              <span>Meth {(weights.methodology * 100).toFixed(0)}%</span>
               <span>Bias {(weights.bias * 100).toFixed(0)}%</span>
             </div>
-            <span className="text-gray-500">{showWeights ? "▲" : "▼"}</span>
+            <span className="text-gray-500 text-xs">
+              {showWeights ? "▲" : "▼"}
+            </span>
           </div>
         </button>
 
         {showWeights && (
-          <div className="px-5 pb-5 pt-2 border-t border-gray-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="px-4 pb-4 pt-2 border-t border-gray-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <WeightSlider
               label="Credibility"
               value={weights.credibility}
@@ -134,19 +172,37 @@ export default function ArticleRankingTable({
         )}
       </div>
 
+      {/* ── Column header ── */}
+      <div className="hidden sm:flex items-center gap-3 px-4 text-[9px] uppercase tracking-widest text-gray-600 select-none">
+        <span className="w-6 text-center">#</span>
+        <span className="flex-1">Article</span>
+        <div className="flex gap-4 border-l border-gray-800 pl-4 pr-2">
+          <span className="w-8 text-center">Cred</span>
+          <span className="w-8 text-center">Cons</span>
+          <span className="w-8 text-center">Meth</span>
+          <span className="w-8 text-center">Bias</span>
+        </div>
+        <div className="flex gap-3 border-l border-gray-800 pl-4">
+          <span className="w-10 text-center">Rank</span>
+          <span className="w-10 text-center">Trust</span>
+        </div>
+        <span className="w-4" />
+      </div>
+
       {/* ── Ranked list ── */}
       {ranked.length === 0 ? (
         <p className="text-center text-gray-600 py-12">
           No articles to rank yet.
         </p>
       ) : (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           {ranked.map(({ article, score }, idx) => (
             <ArticleCard
               key={article.id}
               article={article}
               rank={idx + 1}
               rankingScore={score}
+              rankChanged={changedIds.has(article.id)}
             />
           ))}
         </div>

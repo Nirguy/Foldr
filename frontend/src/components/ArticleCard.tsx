@@ -1,28 +1,61 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   ArticleAnalysis,
   BiasWarning,
   ConsensusVerdict,
+  biasToScore,
+  consensusToScore,
 } from "@/types/article";
+import Tooltip from "./Tooltip";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+function scoreColor(score: number, max = 10) {
+  const pct = (score / max) * 100;
+  if (pct >= 70) return "text-emerald-400";
+  if (pct >= 40) return "text-amber-400";
+  return "text-red-400";
+}
+
 function ScoreBar({ score, max = 10 }: { score: number; max?: number }) {
   const pct = (score / max) * 100;
-  const color =
+  const fill =
     pct >= 70 ? "bg-emerald-500" : pct >= 40 ? "bg-amber-400" : "bg-red-500";
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 rounded-full bg-gray-700 overflow-hidden">
+      <div className="flex-1 h-1.5 rounded-full bg-gray-700 overflow-hidden">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${color}`}
+          className={`h-full rounded-full transition-all duration-500 ${fill}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="text-xs font-mono text-gray-300 w-8 text-right">
-        {score.toFixed(1)}/{max}
+      <span className={`text-xs font-mono w-8 text-right ${scoreColor(score, max)}`}>
+        {score.toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+/** Compact numeric pill shown in the collapsed row */
+function ScorePill({
+  label,
+  score,
+  max = 10,
+}: {
+  label: string;
+  score: number;
+  max?: number;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <span className="text-[9px] uppercase tracking-wider text-gray-500 leading-none">
+        {label}
+      </span>
+      <span className={`text-sm font-bold leading-none ${scoreColor(score, max)}`}>
+        {score.toFixed(1)}
       </span>
     </div>
   );
@@ -56,7 +89,7 @@ function verdictVariant(v: ConsensusVerdict): "good" | "warn" | "bad" {
   return "bad";
 }
 
-function biasVariant(_w: BiasWarning): "warn" | "bad" {
+function biasVariant(_w: BiasWarning): "warn" {
   return "warn";
 }
 
@@ -68,8 +101,8 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="border border-gray-800 rounded-xl p-4 flex flex-col gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-widest text-gray-500">
+    <div className="border border-gray-800 rounded-xl p-3 flex flex-col gap-2">
+      <h3 className="text-[10px] font-semibold uppercase tracking-widest text-gray-500">
         {title}
       </h3>
       {children}
@@ -81,12 +114,11 @@ function Section({
 
 interface ArticleCardProps {
   article: ArticleAnalysis;
-  /** rank position in the table (1-based) */
   rank?: number;
-  /** computed weighted score */
   rankingScore?: number;
-  /** whether to start expanded */
   defaultExpanded?: boolean;
+  /** flash highlight when rank just changed */
+  rankChanged?: boolean;
 }
 
 export default function ArticleCard({
@@ -94,220 +126,270 @@ export default function ArticleCard({
   rank,
   rankingScore,
   defaultExpanded = false,
+  rankChanged = false,
 }: ArticleCardProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
-  const trustColor =
-    article.overallTrustScore >= 7
-      ? "text-emerald-400"
-      : article.overallTrustScore >= 4
-      ? "text-amber-400"
-      : "text-red-400";
+  const trustColor = scoreColor(article.overallTrustScore);
+
+  // Derived sub-scores for the pills
+  const consensusScore = consensusToScore(article.consensus.verdict);
+  const biasScore = biasToScore(article.bias);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden transition-all duration-200">
-      {/* ── Header (always visible) ── */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full text-left px-5 py-4 flex items-start gap-4 hover:bg-gray-800/40 transition-colors"
-        aria-expanded={expanded}
-      >
+    <div
+      className={`bg-gray-900 border rounded-xl overflow-hidden transition-all duration-300 ${
+        rankChanged
+          ? "border-blue-500 shadow-[0_0_12px_2px_rgba(59,130,246,0.25)]"
+          : "border-gray-800"
+      }`}
+    >
+      {/* ── Collapsed header ── */}
+      <div className="flex items-center gap-3 px-4 py-2.5">
+        {/* Rank */}
         {rank !== undefined && (
-          <span className="mt-0.5 text-2xl font-black text-gray-600 w-8 shrink-0 text-center">
-            #{rank}
+          <span className="text-base font-black text-gray-600 w-6 shrink-0 text-center">
+            {rank}
           </span>
         )}
 
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-100 truncate">{article.title}</p>
-          <p className="text-xs text-gray-500 mt-0.5">
+        {/* Title + meta — clickable to expand */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="flex-1 min-w-0 text-left"
+          aria-expanded={expanded}
+        >
+          <p className="text-sm font-semibold text-gray-100 truncate leading-snug">
+            {article.title}
+          </p>
+          <p className="text-[11px] text-gray-500 truncate">
             {article.authors.join(", ")} · {article.publishedYear}
             {article.journal ? ` · ${article.journal}` : ""}
           </p>
+        </button>
+
+        {/* Score pills */}
+        <div className="hidden sm:flex items-center gap-4 shrink-0 border-l border-gray-800 pl-4">
+          <ScorePill label="Cred" score={article.credibility.score} />
+          <ScorePill label="Cons" score={consensusScore} />
+          <ScorePill label="Meth" score={article.methodology.score} />
+          <ScorePill label="Bias" score={biasScore} />
         </div>
 
-        <div className="flex items-center gap-4 shrink-0">
+        {/* Rank score + Trust with tooltips */}
+        <div className="flex items-center gap-3 shrink-0 border-l border-gray-800 pl-4">
           {rankingScore !== undefined && (
-            <div className="text-right">
-              <p className="text-[10px] text-gray-500 uppercase tracking-wide">
-                Rank score
+            <Tooltip content="Rank score: your weighted combination of Credibility, Consensus, Methodology, and Bias scores. Adjust the sliders above to change how each dimension is weighted.">
+              <div className="text-right cursor-help">
+                <p className="text-[9px] text-gray-500 uppercase tracking-wide flex items-center gap-0.5">
+                  Rank <span className="text-gray-600">ⓘ</span>
+                </p>
+                <p className="text-sm font-bold text-blue-400">
+                  {rankingScore.toFixed(2)}
+                </p>
+              </div>
+            </Tooltip>
+          )}
+          <Tooltip content="Trust score: a fixed aggregate of all analysis dimensions (credibility, consensus, methodology, bias) at equal weight. Unlike Rank score, it does not change when you adjust the sliders.">
+            <div className="text-right cursor-help">
+              <p className="text-[9px] text-gray-500 uppercase tracking-wide flex items-center gap-0.5">
+                Trust <span className="text-gray-600">ⓘ</span>
               </p>
-              <p className="text-lg font-bold text-blue-400">
-                {rankingScore.toFixed(2)}
+              <p className={`text-sm font-bold ${trustColor}`}>
+                {article.overallTrustScore.toFixed(1)}
               </p>
             </div>
-          )}
-          <div className="text-right">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide">
-              Trust
-            </p>
-            <p className={`text-lg font-bold ${trustColor}`}>
-              {article.overallTrustScore.toFixed(1)}
-            </p>
-          </div>
-          <span className="text-gray-500 text-lg">{expanded ? "▲" : "▼"}</span>
+          </Tooltip>
         </div>
-      </button>
+
+        {/* Expand toggle */}
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-gray-600 hover:text-gray-300 transition-colors text-xs ml-1 shrink-0"
+          aria-label={expanded ? "Collapse" : "Expand"}
+        >
+          {expanded ? "▲" : "▼"}
+        </button>
+      </div>
 
       {/* ── Expanded detail ── */}
       {expanded && (
-        <div className="px-5 pb-5 grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-gray-800 pt-4">
-          {/* A. Credibility Score */}
-          <Section title="A · Credibility Score">
-            <ScoreBar score={article.credibility.score} />
-            <p className="text-sm text-gray-300 leading-relaxed">
-              {article.credibility.explanation}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Badge
-                label={
-                  article.credibility.institutionKnown
-                    ? "Known institution"
-                    : "Unknown institution"
-                }
-                variant={article.credibility.institutionKnown ? "good" : "warn"}
-              />
-              <Badge
-                label={
-                  article.credibility.conflictsOfInterest
-                    ? "Conflict of interest"
-                    : "No conflict declared"
-                }
-                variant={
-                  article.credibility.conflictsOfInterest ? "bad" : "good"
-                }
-              />
-            </div>
-          </Section>
+        <div className="border-t border-gray-800 px-4 pb-4 pt-3 flex flex-col gap-3">
+          {/* Open full article link */}
+          <div className="flex justify-end">
+            <Link
+              href={`/article/${article.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-blue-400 hover:text-blue-300 hover:underline transition-colors flex items-center gap-1"
+            >
+              Open full article view ↗
+            </Link>
+          </div>
 
-          {/* B. Consensus Check */}
-          <Section title="B · Consensus Check">
-            <Badge
-              label={article.consensus.verdict}
-              variant={verdictVariant(article.consensus.verdict)}
-            />
-            <p className="text-sm text-gray-300 leading-relaxed">
-              {article.consensus.reasoning}
-            </p>
-          </Section>
-
-          {/* C. Methodology Review */}
-          <Section title="C · Methodology Review">
-            <ScoreBar score={article.methodology.score} />
-            {article.methodology.weaknesses.length > 0 ? (
-              <ul className="space-y-1">
-                {article.methodology.weaknesses.map((w, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                    <span className="text-amber-400 mt-0.5">⚠</span>
-                    {w}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-emerald-400">No major weaknesses identified.</p>
-            )}
-          </Section>
-
-          {/* D. Bias / Manipulation Detection */}
-          <Section title="D · Bias & Manipulation Detection">
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">Confidence:</span>
-              <Badge
-                label={article.bias.confidenceLevel}
-                variant={
-                  article.bias.confidenceLevel === "High"
-                    ? "bad"
-                    : article.bias.confidenceLevel === "Medium"
-                    ? "warn"
-                    : "good"
-                }
-              />
-            </div>
-            {article.bias.warnings.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {article.bias.warnings.map((w, i) => (
-                  <Badge key={i} label={w} variant={biasVariant(w)} />
-                ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* A. Credibility */}
+            <Section title="A · Credibility Score">
+              <ScoreBar score={article.credibility.score} />
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {article.credibility.explanation}
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <Badge
+                  label={
+                    article.credibility.institutionKnown
+                      ? "Known institution"
+                      : "Unknown institution"
+                  }
+                  variant={article.credibility.institutionKnown ? "good" : "warn"}
+                />
+                <Badge
+                  label={
+                    article.credibility.conflictsOfInterest
+                      ? "Conflict of interest"
+                      : "No conflict declared"
+                  }
+                  variant={article.credibility.conflictsOfInterest ? "bad" : "good"}
+                />
               </div>
-            ) : (
-              <p className="text-sm text-emerald-400">No bias flags detected.</p>
-            )}
-            <p className="text-sm text-gray-300 leading-relaxed">
-              {article.bias.details}
-            </p>
-          </Section>
+            </Section>
 
-          {/* E. Overall Trust Score — full width */}
-          <Section title="E · Overall Trust Score">
-            <div className="flex items-center gap-4">
-              <span className={`text-5xl font-black ${trustColor}`}>
-                {article.overallTrustScore.toFixed(1)}
-              </span>
-              <div className="flex-1">
-                <ScoreBar score={article.overallTrustScore} />
-                <p className="text-xs text-gray-500 mt-1">
-                  Aggregated from credibility, consensus, methodology, and bias
-                  scores.
-                </p>
-              </div>
-            </div>
-          </Section>
+            {/* B. Consensus */}
+            <Section title="B · Consensus Check">
+              <Badge
+                label={article.consensus.verdict}
+                variant={verdictVariant(article.consensus.verdict)}
+              />
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {article.consensus.reasoning}
+              </p>
+            </Section>
 
-          {/* F. Supporting Context — full width */}
-          <Section title="F · Supporting Context">
-            <p className="text-sm text-gray-300 leading-relaxed">
-              {article.context.summary}
-            </p>
-            {article.context.keyConcerns.length > 0 && (
-              <div>
-                <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">
-                  Key concerns
-                </p>
+            {/* C. Methodology */}
+            <Section title="C · Methodology Review">
+              <ScoreBar score={article.methodology.score} />
+              {article.methodology.weaknesses.length > 0 ? (
                 <ul className="space-y-1">
-                  {article.context.keyConcerns.map((c, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm text-gray-300">
-                      <span className="text-red-400 mt-0.5">•</span>
-                      {c}
+                  {article.methodology.weaknesses.map((w, i) => (
+                    <li
+                      key={i}
+                      className="flex items-start gap-1.5 text-xs text-gray-300"
+                    >
+                      <span className="text-amber-400 mt-0.5 shrink-0">⚠</span>
+                      {w}
                     </li>
                   ))}
                 </ul>
-              </div>
-            )}
-            {article.context.relatedStudies.length > 0 && (
-              <div>
-                <p className="text-xs text-gray-500 mb-1 uppercase tracking-wide">
-                  Related studies
+              ) : (
+                <p className="text-xs text-emerald-400">
+                  No major weaknesses identified.
                 </p>
-                <ul className="space-y-1">
-                  {article.context.relatedStudies.map((s, i) => (
-                    <li key={i} className="flex items-center gap-2 text-sm">
-                      <span
-                        className={
-                          s.relation === "supports"
-                            ? "text-emerald-400"
-                            : "text-red-400"
-                        }
+              )}
+            </Section>
+
+            {/* D. Bias */}
+            <Section title="D · Bias & Manipulation">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-gray-500">Confidence:</span>
+                <Badge
+                  label={article.bias.confidenceLevel}
+                  variant={
+                    article.bias.confidenceLevel === "High"
+                      ? "bad"
+                      : article.bias.confidenceLevel === "Medium"
+                      ? "warn"
+                      : "good"
+                  }
+                />
+              </div>
+              {article.bias.warnings.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {article.bias.warnings.map((w, i) => (
+                    <Badge key={i} label={w} variant={biasVariant(w)} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-emerald-400">No bias flags detected.</p>
+              )}
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {article.bias.details}
+              </p>
+            </Section>
+
+            {/* E. Overall Trust */}
+            <Section title="E · Overall Trust Score">
+              <div className="flex items-center gap-3">
+                <span className={`text-4xl font-black ${trustColor}`}>
+                  {article.overallTrustScore.toFixed(1)}
+                </span>
+                <div className="flex-1">
+                  <ScoreBar score={article.overallTrustScore} />
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Aggregated from credibility, consensus, methodology, and bias.
+                  </p>
+                </div>
+              </div>
+            </Section>
+
+            {/* F. Supporting Context */}
+            <Section title="F · Supporting Context">
+              <p className="text-xs text-gray-300 leading-relaxed">
+                {article.context.summary}
+              </p>
+              {article.context.keyConcerns.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">
+                    Key concerns
+                  </p>
+                  <ul className="space-y-0.5">
+                    {article.context.keyConcerns.map((c, i) => (
+                      <li
+                        key={i}
+                        className="flex items-start gap-1.5 text-xs text-gray-300"
                       >
-                        {s.relation === "supports" ? "↑" : "↓"}
-                      </span>
-                      {s.url ? (
-                        <a
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-400 hover:underline"
+                        <span className="text-red-400 mt-0.5 shrink-0">•</span>
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {article.context.relatedStudies.length > 0 && (
+                <div>
+                  <p className="text-[10px] text-gray-500 mb-1 uppercase tracking-wide">
+                    Related studies
+                  </p>
+                  <ul className="space-y-0.5">
+                    {article.context.relatedStudies.map((s, i) => (
+                      <li key={i} className="flex items-center gap-1.5 text-xs">
+                        <span
+                          className={
+                            s.relation === "supports"
+                              ? "text-emerald-400"
+                              : "text-red-400"
+                          }
                         >
-                          {s.title}
-                        </a>
-                      ) : (
-                        <span className="text-gray-300">{s.title}</span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </Section>
+                          {s.relation === "supports" ? "↑" : "↓"}
+                        </span>
+                        {s.url ? (
+                          <a
+                            href={s.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-400 hover:underline"
+                          >
+                            {s.title}
+                          </a>
+                        ) : (
+                          <span className="text-gray-300">{s.title}</span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </Section>
+          </div>
         </div>
       )}
     </div>
