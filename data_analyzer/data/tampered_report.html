@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dataset Authenticity & Tampering Diagnosis</title>
+    <!-- Import Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-main: #0B0F19;
+            --bg-card: rgba(17, 24, 39, 0.7);
+            --border-card: rgba(255, 255, 255, 0.08);
+            --text-primary: #F3F4F6;
+            --text-secondary: #9CA3AF;
+            --color-indigo: #6366F1;
+            --color-emerald: #10B981;
+            --color-amber: #F59E0B;
+            --color-rose: #EF4444;
+            --font-display: 'Outfit', sans-serif;
+            --font-body: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            min-height: 100vh;
+            padding: 2rem;
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(99, 102, 241, 0.15) 0px, transparent 50%),
+                radial-gradient(at 90% 10%, rgba(16, 185, 129, 0.1) 0px, transparent 50%),
+                radial-gradient(at 50% 80%, rgba(239, 68, 68, 0.05) 0px, transparent 50%);
+            background-attachment: fixed;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-card);
+        }
+
+        .header-left h1 {
+            font-family: var(--font-display);
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FFF 30%, var(--color-indigo) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .header-left p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        .selector-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .selector-container label {
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        select {
+            background-color: rgba(31, 41, 55, 0.9);
+            color: var(--text-primary);
+            border: 1px solid var(--border-card);
+            padding: 0.6rem 1.2rem;
+            border-radius: 8px;
+            font-family: var(--font-body);
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        select:focus {
+            border-color: var(--color-indigo);
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+        }
+
+        .grid-summary {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: 16px;
+            padding: 2rem;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card-score {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+        }
+
+        .score-circle-container {
+            position: relative;
+            width: 180px;
+            height: 180px;
+            margin-bottom: 1.5rem;
+        }
+
+        .score-circle-bg {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.05);
+            stroke-width: 14;
+        }
+
+        .score-circle-val {
+            fill: none;
+            stroke: var(--color-indigo);
+            stroke-width: 14;
+            stroke-linecap: round;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+            transition: stroke-dashoffset 1s ease-out;
+        }
+
+        .score-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .score-num {
+            font-family: var(--font-display);
+            font-size: 2.8rem;
+            font-weight: 800;
+        }
+
+        .score-pct {
+            font-size: 1.2rem;
+            color: var(--text-secondary);
+        }
+
+        .rating-badge {
+            display: inline-block;
+            padding: 0.5rem 1.2rem;
+            border-radius: 30px;
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+        }
+
+        .rating-low { background: rgba(16, 185, 129, 0.15); color: var(--color-emerald); border: 1px solid rgba(16, 185, 129, 0.3); }
+        .rating-med { background: rgba(245, 158, 11, 0.15); color: var(--color-amber); border: 1px solid rgba(245, 158, 11, 0.3); }
+        .rating-high { background: rgba(239, 68, 68, 0.15); color: var(--color-rose); border: 1px solid rgba(239, 68, 68, 0.3); }
+
+        .diagnosis-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-top: 1rem;
+        }
+
+        .diagnosis-title {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #FFF, var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .grid-tests {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .test-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            transition: transform 0.3s ease, border-color 0.3s ease;
+        }
+
+        .test-card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .test-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 0.8rem;
+        }
+
+        .test-title {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .test-badge {
+            font-size: 0.75rem;
+            padding: 0.25rem 0.6rem;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        .test-badge-flagged { background: rgba(239, 68, 68, 0.2); color: var(--color-rose); }
+        .test-badge-normal { background: rgba(16, 185, 129, 0.2); color: var(--color-emerald); }
+        .test-badge-inap { background: rgba(156, 163, 175, 0.2); color: var(--text-secondary); }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            font-weight: 500;
+        }
+
+        .tabs-container {
+            margin-top: 3rem;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            border-bottom: 1px solid var(--border-card);
+            margin-bottom: 1.5rem;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 600;
+            padding: 0.8rem 1.5rem;
+            cursor: pointer;
+            position: relative;
+            outline: none;
+            transition: color 0.3s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active {
+            color: var(--color-indigo);
+        }
+
+        .tab-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background-color: var(--color-indigo);
+            box-shadow: 0 -2px 10px rgba(99, 102, 241, 0.5);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .chart-box {
+            background: rgba(17, 24, 39, 0.4);
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            height: 350px;
+            position: relative;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border: 1px solid var(--border-card);
+            border-radius: 12px;
+            background: var(--bg-card);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.9rem;
+        }
+
+        th {
+            background-color: rgba(31, 41, 55, 0.4);
+            font-family: var(--font-display);
+            font-weight: 600;
+            color: var(--text-primary);
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-card);
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            color: var(--text-secondary);
+        }
+
+        tr:hover td {
+            color: var(--text-primary);
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .text-rose { color: var(--color-rose); }
+        .text-emerald { color: var(--color-emerald); }
+        .text-amber { color: var(--color-amber); }
+
+        /* Custom detailed anomaly panel */
+        .anomalies-list {
+            margin-top: 1rem;
+            list-style: none;
+        }
+        .anomaly-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.8rem;
+            padding: 0.8rem;
+            border-radius: 8px;
+            background: rgba(239, 68, 68, 0.05);
+            border: 1px solid rgba(239, 68, 68, 0.15);
+            margin-bottom: 0.8rem;
+            font-size: 0.9rem;
+        }
+        .anomaly-icon {
+            color: var(--color-rose);
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-left">
+                <h1>Dataset Authenticity & Tampering Diagnosis</h1>
+                <p id="sub-header">Scanning numerical columns for parameter forcing, artificial noise, and structural violations.</p>
+            </div>
+            <div class="selector-container" id="sheet-selector-wrapper" style="display: none;">
+                <label for="sheet-select">Select Sheet/Dataset:</label>
+                <select id="sheet-select" onchange="switchSheet(this.value)"></select>
+            </div>
+        </header>
+
+        <!-- Main Summary Section -->
+        <div class="grid-summary">
+            <div class="card card-score" id="summary-score-card">
+                <div class="score-circle-container">
+                    <svg width="180" height="180">
+                        <circle class="score-circle-bg" cx="90" cy="90" r="75" />
+                        <circle id="score-ring" class="score-circle-val" cx="90" cy="90" r="75" stroke-dasharray="471.2" stroke-dashoffset="471.2" />
+                    </svg>
+                    <div class="score-text">
+                        <span class="score-num" id="tamper-score">0</span>
+                        <span class="score-pct">%</span>
+                    </div>
+                </div>
+                <div class="rating-badge" id="risk-rating">Authentic</div>
+                <p style="font-size:0.85rem; color: var(--text-secondary);" id="tests-count">Applicable tests: 0</p>
+            </div>
+
+            <div class="card">
+                <h2 class="diagnosis-title">Diagnostic Findings</h2>
+                <div class="diagnosis-text" id="diagnosis-text">
+                    Select a dataset to begin the authentication report.
+                </div>
+            </div>
+        </div>
+
+        <!-- 6 Core tests summary dashboard -->
+        <div class="grid-tests" id="tests-dashboard">
+            <!-- Populated dynamically -->
+        </div>
+
+        <!-- Detailed Views -->
+        <div class="tabs-container">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab(event, 'columns-tab')">Column Analysis</button>
+                <button class="tab-btn" onclick="switchTab(event, 'structural-tab')">Context & Structural Checks</button>
+                <button class="tab-btn" onclick="switchTab(event, 'charts-tab')">Visualizations</button>
+            </div>
+
+            <!-- Tab 1: Columns -->
+            <div id="columns-tab" class="tab-content active">
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Column</th>
+                                <th>Benford P-Value</th>
+                                <th>Mantissa Entropy</th>
+                                <th>Residual Normality (p)</th>
+                                <th>Durbin-Watson</th>
+                                <th>Distribution Overfitting</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="columns-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Tab 2: Structural -->
+            <div id="structural-tab" class="tab-content">
+                <div class="grid-summary" style="grid-template-columns: 1fr 1fr;">
+                    <div class="card">
+                        <h3 class="diagnosis-title" style="font-size: 1.2rem; margin-bottom: 0.8rem;">Multi-dimensional & Spatial Structure</h3>
+                        <div class="stat-row">
+                            <span class="stat-label">Anomaly Score Density Peaks:</span>
+                            <span class="stat-value" id="struct-peaks">-</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Duplicated Columns:</span>
+                            <span class="stat-value" id="struct-duplicates">-</span>
+                        </div>
+                        <div class="stat-row">
+                            <span class="stat-label">Status:</span>
+                            <span class="stat-value" id="struct-status">-</span>
+                        </div>
+                        <div class="stat-row" style="margin-top:1rem;">
+                            <p style="font-size:0.85rem; color:var(--text-secondary)">
+                                Multi-dimensional structures evaluate the joint density function. Real data exhibits smooth, complex continuous profiles, whereas AI models tend to cluster or force grid alignment, resulting in distinct density peaks.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3 class="diagnosis-title" style="font-size: 1.2rem; margin-bottom: 0.8rem;">Logical & Precision Violations</h3>
+                        <div id="logical-anomalies-list" class="anomalies-list">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab 3: Charts -->
+            <div id="charts-tab" class="tab-content">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                    <div>
+                        <h3 class="diagnosis-title" style="font-size:1.1rem; margin-bottom:0.5rem;" id="chart1-title">Benford's Law Digit Frequencies</h3>
+                        <div class="chart-box">
+                            <canvas id="benfordChart"></canvas>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="diagnosis-title" style="font-size:1.1rem; margin-bottom:0.5rem;" id="chart2-title">Mantissa Entropy of Floats</h3>
+                        <div class="chart-box">
+                            <canvas id="entropyChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Injection -->
+    <script id="results-data" type="application/json">
+        {
+  "default": {
+    "summary": {
+      "tampering_index": 84.47355295917198,
+      "diagnosis": "Strong evidence of dataset tampering or synthetic generation. Tests indicate parameter forcing, absence of sensor discretization, or artificial noise profiles.",
+      "applicable_tests": 15,
+      "rating": "Tampered / AI-Generated (High Risk)"
+    },
+    "columns": {
+      "Flow_Rate": {
+        "benford": {
+          "is_applicable": true,
+          "orders_of_magnitude": 2.4683566291743846,
+          "observed_dist": {
+            "1": 0.57,
+            "2": 0.046,
+            "3": 0.064,
+            "4": 0.05,
+            "5": 0.07,
+            "6": 0.052,
+            "7": 0.048,
+            "8": 0.05,
+            "9": 0.05
+          },
+          "expected_dist": {
+            "1": 0.3010299956639812,
+            "2": 0.17609125905568124,
+            "3": 0.12493873660829993,
+            "4": 0.09691001300805642,
+            "5": 0.07918124604762482,
+            "6": 0.06694678963061322,
+            "7": 0.05799194697768673,
+            "8": 0.05115252244738129,
+            "9": 0.04575749056067514
+          },
+          "chi2_stat": 197.70235973875913,
+          "p_value": 1.947681482430476e-38,
+          "suspicion_score": 1.0,
+          "status": "Flagged"
+        },
+        "sensor_artifacts": {
+          "is_applicable": true,
+          "unique_ratio": 1.0,
+          "decimal_entropy": 3.3154731849416024,
+          "quantization_detected": false,
+          "quantum": null,
+          "suspicion_score": 1.0,
+          "status": "Suspicious (High Entropy/No Discretization)"
+        },
+        "residuals": {
+          "is_applicable": true,
+          "dw_stat": 1.9761134993240346,
+          "acf_lag1": 0.009267618383650651,
+          "shapiro_p": 3.6401018594439845e-11,
+          "suspicion_score": 0.3,
+          "reasons": [
+            "Suspiciously uncorrelated residuals (Durbin-Watson near 2.0)"
+          ],
+          "status": "Normal"
+        },
+        "overfitting": {
+          "is_applicable": true,
+          "ks_stat": 0.07857475026398963,
+          "ks_p_value": 0.003930208220981784,
+          "fit_percentile": 1.0,
+          "suspicion_score": 0.0,
+          "status": "Normal"
+        }
+      },
+      "Temperature": {
+        "benford": {
+          "is_applicable": false,
+          "reason": "Data span too narrow (0.30 orders < 1.5)",
+          "p_value": 1.0,
+          "chi2_stat": 0.0,
+          "suspicion_score": 0.0,
+          "status": "Inapplicable"
+        },
+        "sensor_artifacts": {
+          "is_applicable": true,
+          "unique_ratio": 1.0,
+          "decimal_entropy": 3.304420209835312,
+          "quantization_detected": false,
+          "quantum": null,
+          "suspicion_score": 0.9492746348664725,
+          "status": "Suspicious (High Entropy/No Discretization)"
+        },
+        "residuals": {
+          "is_applicable": true,
+          "dw_stat": 1.9967743584762954,
+          "acf_lag1": -0.0017650096656190368,
+          "shapiro_p": 0.999987757808534,
+          "suspicion_score": 0.6999020624682724,
+          "reasons": [
+            "Suspiciously normal residuals (p=1.0000)",
+            "Suspiciously uncorrelated residuals (Durbin-Watson near 2.0)"
+          ],
+          "status": "Flagged"
+        },
+        "overfitting": {
+          "is_applicable": true,
+          "ks_stat": 0.0013133034538145294,
+          "ks_p_value": 1.0,
+          "fit_percentile": 0.0,
+          "suspicion_score": 1.0,
+          "status": "Flagged (Distributional Over-Fitting)"
+        }
+      },
+      "Pressure": {
+        "benford": {
+          "is_applicable": true,
+          "orders_of_magnitude": 7.0059793532029575,
+          "observed_dist": {
+            "1": 0.004,
+            "2": 0.486,
+            "3": 0.506,
+            "4": 0.004,
+            "5": 0.0,
+            "6": 0.0,
+            "7": 0.0,
+            "8": 0.0,
+            "9": 0.0
+          },
+          "expected_dist": {
+            "1": 0.3010299956639812,
+            "2": 0.17609125905568124,
+            "3": 0.12493873660829993,
+            "4": 0.09691001300805642,
+            "5": 0.07918124604762482,
+            "6": 0.06694678963061322,
+            "7": 0.05799194697768673,
+            "8": 0.05115252244738129,
+            "9": 0.04575749056067514
+          },
+          "chi2_stat": 1195.4189255485273,
+          "p_value": 9.366542137085498e-253,
+          "suspicion_score": 1.0,
+          "status": "Flagged"
+        },
+        "sensor_artifacts": {
+          "is_applicable": true,
+          "unique_ratio": 1.0,
+          "decimal_entropy": 3.308635976047638,
+          "quantization_detected": false,
+          "quantum": null,
+          "suspicion_score": 0.9875997822512533,
+          "status": "Suspicious (High Entropy/No Discretization)"
+        },
+        "residuals": {
+          "is_applicable": true,
+          "dw_stat": 2.022288078025101,
+          "acf_lag1": -0.01210744547338586,
+          "shapiro_p": 2.995954421323051e-17,
+          "suspicion_score": 0.3,
+          "reasons": [
+            "Suspiciously uncorrelated residuals (Durbin-Watson near 2.0)"
+          ],
+          "status": "Normal"
+        },
+        "overfitting": {
+          "is_applicable": true,
+          "ks_stat": 0.05145855649579251,
+          "ks_p_value": 0.13671480115886492,
+          "fit_percentile": 0.998,
+          "suspicion_score": 0.0,
+          "status": "Normal"
+        }
+      }
+    },
+    "bivariate": {
+      "correlations": [
+        {
+          "col1": "Flow_Rate",
+          "col2": "Temperature",
+          "r": 0.019005687185762548,
+          "r_squared": 0.0003612161454030587,
+          "is_perfect_line": false
+        },
+        {
+          "col1": "Flow_Rate",
+          "col2": "Pressure",
+          "r": 0.012723114951251346,
+          "r_squared": 0.00016187765406275553,
+          "is_perfect_line": false
+        },
+        {
+          "col1": "Temperature",
+          "col2": "Pressure",
+          "r": 0.8196007176656945,
+          "r_squared": 0.6717453363981215,
+          "is_perfect_line": false
+        }
+      ],
+      "homoscedasticity": [
+        {
+          "col1": "Flow_Rate",
+          "col2": "Temperature",
+          "bp_p_value": 0.4540559482713743,
+          "levene_p_value": 0.9678312025797364,
+          "suspicion_score": 0.0,
+          "reasons": [],
+          "status": "Normal"
+        },
+        {
+          "col1": "Flow_Rate",
+          "col2": "Pressure",
+          "bp_p_value": 0.7960566715663312,
+          "levene_p_value": 0.6761846843030243,
+          "suspicion_score": 0.0,
+          "reasons": [],
+          "status": "Normal"
+        },
+        {
+          "col1": "Temperature",
+          "col2": "Pressure",
+          "bp_p_value": 0.6402809854775082,
+          "levene_p_value": 0.5780166166424023,
+          "suspicion_score": 0.0,
+          "reasons": [],
+          "status": "Normal"
+        }
+      ],
+      "structural": {
+        "num_peaks_anomaly_scores": 1,
+        "duplicate_columns": [],
+        "logical_violations": [],
+        "suspicion_score": 0.0,
+        "status": "Normal"
+      }
+    }
+  }
+}
+    </script>
+
+    <!-- UI Logic -->
+    <script>
+        const allResults = JSON.parse(document.getElementById('results-data').textContent);
+        let activeSheet = "";
+        let charts = {};
+
+        window.onload = function() {
+            const sheets = Object.keys(allResults);
+            if (sheets.length > 1) {
+                const selectEl = document.getElementById('sheet-select');
+                sheets.forEach(sh => {
+                    const opt = document.createElement('option');
+                    opt.value = sh;
+                    opt.textContent = sh;
+                    selectEl.appendChild(opt);
+                });
+                document.getElementById('sheet-selector-wrapper').style.display = 'flex';
+            }
+            activeSheet = sheets[0];
+            renderDashboard(activeSheet);
+        };
+
+        function switchSheet(sheetName) {
+            activeSheet = sheetName;
+            renderDashboard(activeSheet);
+        }
+
+        function switchTab(evt, tabId) {
+            const tabs = document.querySelectorAll('.tab-content');
+            tabs.forEach(t => t.classList.remove('active'));
+            
+            const tabBtns = document.querySelectorAll('.tab-btn');
+            tabBtns.forEach(b => b.classList.remove('active'));
+            
+            document.getElementById(tabId).classList.add('active');
+            evt.currentTarget.classList.add('active');
+
+            if (tabId === 'charts-tab') {
+                // Resize charts if active
+                setTimeout(() => {
+                    Object.values(charts).forEach(chart => chart.update());
+                }, 100);
+            }
+        }
+
+        function renderDashboard(sheetName) {
+            const data = allResults[sheetName];
+            
+            // 1. Overall Score Ring animation
+            const score = Math.round(data.summary.tampering_index);
+            document.getElementById('tamper-score').textContent = score;
+            const ring = document.getElementById('score-ring');
+            const circumference = 2 * Math.PI * 75; // 471.2
+            const offset = circumference - (score / 100) * circumference;
+            ring.style.strokeDashoffset = offset;
+
+            // Change ring and rating badge color based on score
+            const ratingEl = document.getElementById('risk-rating');
+            ratingEl.textContent = data.summary.rating;
+            ratingEl.className = "rating-badge";
+            
+            if (score < 25) {
+                ratingEl.classList.add('rating-low');
+                ring.style.stroke = "var(--color-emerald)";
+            } else if (score < 60) {
+                ratingEl.classList.add('rating-med');
+                ring.style.stroke = "var(--color-amber)";
+            } else {
+                ratingEl.classList.add('rating-high');
+                ring.style.stroke = "var(--color-rose)";
+            }
+
+            document.getElementById('tests-count').textContent = `Applicable tests: ${data.summary.applicable_tests}`;
+            document.getElementById('diagnosis-text').textContent = data.summary.diagnosis;
+
+            // 2. Render 6 core tests cards
+            renderTestSummaryCards(data);
+
+            // 3. Render Columns table
+            renderColumnsTable(data);
+
+            // 4. Render Structural tab
+            renderStructuralTab(data);
+
+            // 5. Build/Update Charts
+            buildVisualizations(data);
+        }
+
+        function renderTestSummaryCards(data) {
+            const container = document.getElementById('tests-dashboard');
+            container.innerHTML = "";
+
+            // Gather values for the cards
+            // 1. Benford
+            let benfordApplicable = false;
+            let benfordStatus = "Inapplicable";
+            let benfordP = 1.0;
+            let benfordSus = 0.0;
+            
+            for (const col in data.columns) {
+                if (data.columns[col].benford.is_applicable) {
+                    benfordApplicable = true;
+                    if (data.columns[col].benford.suspicion_score > benfordSus) {
+                        benfordSus = data.columns[col].benford.suspicion_score;
+                        benfordStatus = data.columns[col].benford.status;
+                        benfordP = data.columns[col].benford.p_value;
+                    }
+                }
+            }
+
+            // 2. Homoscedasticity
+            let homoscedasticApplicable = false;
+            let homoscedasticStatus = "Normal";
+            let homoscedasticSus = 0.0;
+            let minLeveneP = 1.0;
+            
+            data.bivariate.homoscedasticity.forEach(h => {
+                homoscedasticApplicable = true;
+                if (h.suspicion_score > homoscedasticSus) {
+                    homoscedasticSus = h.suspicion_score;
+                    homoscedasticStatus = h.status;
+                }
+                if (h.levene_p_value < minLeveneP) minLeveneP = h.levene_p_value;
+            });
+
+            // 3. Sensor Artifacts
+            let artifactsApplicable = false;
+            let artifactsStatus = "Normal";
+            let artifactsSus = 0.0;
+            let maxEntropy = 0.0;
+            
+            for (const col in data.columns) {
+                const sa = data.columns[col].sensor_artifacts;
+                if (sa.is_applicable) {
+                    artifactsApplicable = true;
+                    if (sa.suspicion_score > artifactsSus) {
+                        artifactsSus = sa.suspicion_score;
+                        artifactsStatus = sa.status;
+                    }
+                    if (sa.decimal_entropy > maxEntropy) maxEntropy = sa.decimal_entropy;
+                }
+            }
+
+            // 4. Unnatural Residuals
+            let residualsApplicable = false;
+            let residualsStatus = "Normal";
+            let residualsSus = 0.0;
+            let minShapiroP = 1.0;
+            
+            for (const col in data.columns) {
+                const res = data.columns[col].residuals;
+                if (res.is_applicable) {
+                    residualsApplicable = true;
+                    if (res.suspicion_score > residualsSus) {
+                        residualsSus = res.suspicion_score;
+                        residualsStatus = res.status;
+                    }
+                    if (res.shapiro_p < minShapiroP) minShapiroP = res.shapiro_p;
+                }
+            }
+
+            // 5. Distributional Overfitting
+            let overfitApplicable = false;
+            let overfitStatus = "Normal";
+            let overfitSus = 0.0;
+            let minPercentile = 1.0;
+            
+            for (const col in data.columns) {
+                const ov = data.columns[col].overfitting;
+                if (ov.is_applicable) {
+                    overfitApplicable = true;
+                    if (ov.suspicion_score > overfitSus) {
+                        overfitSus = ov.suspicion_score;
+                        overfitStatus = ov.status;
+                    }
+                    if (ov.fit_percentile < minPercentile) minPercentile = ov.fit_percentile;
+                }
+            }
+
+            // 6. Context & Structural
+            let structApplicable = data.bivariate.structural ? true : false;
+            let structStatus = data.bivariate.structural ? data.bivariate.structural.status : "Normal";
+            let structSus = data.bivariate.structural ? data.bivariate.structural.suspicion_score : 0.0;
+
+            const tests = [
+                {
+                    title: "Benford's Law Compliance",
+                    applicable: benfordApplicable,
+                    status: benfordStatus,
+                    susScore: benfordSus,
+                    details: benfordApplicable ? `Max Deviation Chi2 P-val: ${benfordP.toFixed(5)}` : "No spanning columns found"
+                },
+                {
+                    title: "Homoscedasticity Profile",
+                    applicable: homoscedasticApplicable,
+                    status: homoscedasticStatus,
+                    susScore: homoscedasticSus,
+                    details: homoscedasticApplicable ? `Levene across X-bins (min p): ${minLeveneP.toFixed(4)}` : "Needs multiple numeric columns"
+                },
+                {
+                    title: "Sensor Rounding & Discretization",
+                    applicable: artifactsApplicable,
+                    status: artifactsStatus,
+                    susScore: artifactsSus,
+                    details: artifactsApplicable ? `Max Mantissa Entropy: ${maxEntropy.toFixed(3)} bits` : "No float columns found"
+                },
+                {
+                    title: "Residual Noise & Autocorrelation",
+                    applicable: residualsApplicable,
+                    status: residualsStatus,
+                    susScore: residualsSus,
+                    details: residualsApplicable ? `Normality tests and DW check` : "Too few values to fit trends"
+                },
+                {
+                    title: "Distribution Over-Fitting",
+                    applicable: overfitApplicable,
+                    status: overfitStatus,
+                    susScore: overfitSus,
+                    details: overfitApplicable ? `Bootstrapped KS percentile: ${(minPercentile * 100).toFixed(1)}%` : "Not enough samples to test"
+                },
+                {
+                    title: "Context & Joint Density Checks",
+                    applicable: structApplicable,
+                    status: structStatus,
+                    susScore: structSus,
+                    details: structApplicable ? `Multimodal density peaks: ${data.bivariate.structural.num_peaks_anomaly_scores}` : "Insufficient numeric dimensions"
+                }
+            ];
+
+            tests.forEach(t => {
+                const card = document.createElement('div');
+                card.className = "test-card";
+                
+                let badgeClass = "test-badge-normal";
+                if (!t.applicable) badgeClass = "test-badge-inap";
+                else if (t.susScore > 0.6) badgeClass = "test-badge-flagged";
+                else if (t.susScore > 0.2) badgeClass = "test-badge-inap"; // medium is standard
+
+                card.innerHTML = `
+                    <div class="test-header">
+                        <span class="test-title">${t.title}</span>
+                        <span class="test-badge ${badgeClass}">${t.applicable ? t.status : "Inapplicable"}</span>
+                    </div>
+                    <div class="stat-row">
+                        <span class="stat-label">Suspicion Index:</span>
+                        <span class="stat-value ${t.susScore > 0.6 ? 'text-rose' : (t.susScore > 0.2 ? 'text-amber' : 'text-emerald')}">${Math.round(t.susScore * 100)}%</span>
+                    </div>
+                    <div class="stat-row" style="margin-top: 0.5rem; font-size: 0.8rem;">
+                        <span class="stat-label">${t.details}</span>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderColumnsTable(data) {
+            const tbody = document.getElementById('columns-table-body');
+            tbody.innerHTML = "";
+
+            for (const col in data.columns) {
+                const c = data.columns[col];
+                const tr = document.createElement('tr');
+
+                // Benford p-val
+                const benfordVal = c.benford.is_applicable ? c.benford.p_value.toFixed(4) : "N/A";
+                // Entropy
+                const entVal = c.sensor_artifacts.is_applicable ? c.sensor_artifacts.decimal_entropy.toFixed(3) : "N/A";
+                // Residuals
+                const resVal = c.residuals.is_applicable ? c.residuals.shapiro_p.toFixed(4) : "N/A";
+                const dwVal = c.residuals.is_applicable ? c.residuals.dw_stat.toFixed(3) : "N/A";
+                // Overfit
+                const overVal = c.overfitting.is_applicable ? `Percentile: ${(c.overfitting.fit_percentile * 100).toFixed(1)}%` : "N/A";
+
+                // Overall status for this column
+                let maxSus = Math.max(
+                    c.benford.suspicion_score || 0,
+                    c.sensor_artifacts.suspicion_score || 0,
+                    c.residuals.suspicion_score || 0,
+                    c.overfitting.suspicion_score || 0
+                );
+                
+                let colStatus = "Normal";
+                let colorClass = "text-emerald";
+                if (maxSus > 0.7) {
+                    colStatus = "Tampered / AI";
+                    colorClass = "text-rose";
+                } else if (maxSus > 0.3) {
+                    colStatus = "Suspicious";
+                    colorClass = "text-amber";
+                }
+
+                tr.innerHTML = `
+                    <td style="font-weight: 600; color: var(--text-primary);">${col}</td>
+                    <td class="${c.benford.suspicion_score > 0.6 ? 'text-rose' : ''}">${benfordVal}</td>
+                    <td class="${c.sensor_artifacts.suspicion_score > 0.6 ? 'text-rose' : ''}">${entVal}</td>
+                    <td class="${c.residuals.suspicion_score > 0.5 ? 'text-rose' : ''}">${resVal}</td>
+                    <td>${dwVal}</td>
+                    <td class="${c.overfitting.suspicion_score > 0.6 ? 'text-rose' : ''}">${overVal}</td>
+                    <td class="${colorClass}" style="font-weight:600;">${colStatus}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+        }
+
+        function renderStructuralTab(data) {
+            const st = data.bivariate.structural;
+            if (!st) return;
+
+            document.getElementById('struct-peaks').textContent = st.num_peaks_anomaly_scores || 0;
+            document.getElementById('struct-duplicates').textContent = st.duplicate_columns && st.duplicate_columns.length > 0 
+                ? st.duplicate_columns.map(p => p.join(' = ')).join(', ') 
+                : "None";
+            
+            const structStatusEl = document.getElementById('struct-status');
+            structStatusEl.textContent = st.status;
+            structStatusEl.className = "stat-value " + (st.suspicion_score > 0.6 ? 'text-rose' : 'text-emerald');
+
+            const anomaliesContainer = document.getElementById('logical-anomalies-list');
+            anomaliesContainer.innerHTML = "";
+
+            let anomalyCount = 0;
+
+            // 1. Boundary violations
+            if (st.logical_violations && st.logical_violations.length > 0) {
+                st.logical_violations.forEach(v => {
+                    anomalyCount++;
+                    const item = document.createElement('div');
+                    item.className = "anomaly-item";
+                    item.innerHTML = `<span class="anomaly-icon">⚠</span><div><strong>Boundary Violation:</strong> ${v}</div>`;
+                    anomaliesContainer.appendChild(item);
+                });
+            }
+
+            // 2. Perfect correlation lines
+            data.bivariate.correlations.forEach(c => {
+                if (c.is_perfect_line) {
+                    anomalyCount++;
+                    const item = document.createElement('div');
+                    item.className = "anomaly-item";
+                    item.innerHTML = `<span class="anomaly-icon">⚠</span><div><strong>Perfect Fit:</strong> Column pair (${c.col1}, ${c.col2}) forms a perfect noise-free line (R² = ${c.r_squared.toFixed(5)}).</div>`;
+                    anomaliesContainer.appendChild(item);
+                }
+            });
+
+            if (anomalyCount === 0) {
+                anomaliesContainer.innerHTML = `
+                    <div style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+                        <div class="text-emerald" style="font-size: 2rem; margin-bottom: 0.5rem;">✔</div>
+                        No logical constraints or perfect mathematical correlation anomalies detected.
+                    </div>
+                `;
+            }
+        }
+
+        function buildVisualizations(data) {
+            // Destroy existing charts if any
+            if (charts.benford) charts.benford.destroy();
+            if (charts.entropy) charts.entropy.destroy();
+
+            // 1. Find a column suitable for Benford chart
+            let benfordCol = null;
+            for (const col in data.columns) {
+                if (data.columns[col].benford.is_applicable) {
+                    benfordCol = col;
+                    break;
+                }
+            }
+
+            if (benfordCol) {
+                document.getElementById('chart1-title').textContent = `Benford's Law Digit Frequencies (${benfordCol})`;
+                const bData = data.columns[benfordCol].benford;
+                const digits = Array.from({length: 9}, (_, i) => i + 1);
+                const observed = digits.map(d => bData.observed_dist[d]);
+                const expected = digits.map(d => bData.expected_dist[d]);
+
+                const ctx = document.getElementById('benfordChart').getContext('2d');
+                charts.benford = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: digits,
+                        datasets: [
+                            {
+                                label: 'Observed Frequencies',
+                                data: observed,
+                                backgroundColor: 'rgba(99, 102, 241, 0.7)',
+                                borderColor: 'var(--color-indigo)',
+                                borderWidth: 1
+                            },
+                            {
+                                label: 'Expected Benford',
+                                data: expected,
+                                type: 'line',
+                                borderColor: 'var(--color-amber)',
+                                borderWidth: 2,
+                                fill: false,
+                                pointBackgroundColor: 'var(--color-amber)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: { color: 'var(--text-primary)' }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: 'var(--text-secondary)' }
+                            },
+                            y: {
+                                grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                                ticks: { color: 'var(--text-secondary)' }
+                            }
+                        }
+                    }
+                });
+            } else {
+                document.getElementById('chart1-title').textContent = "Benford's Law Digit Frequencies (N/A)";
+                const ctx = document.getElementById('benfordChart').getContext('2d');
+                ctx.clearRect(0, 0, 300, 300);
+            }
+
+            // 2. Build Entropy comparison chart for all columns
+            const colNames = Object.keys(data.columns).filter(col => data.columns[col].sensor_artifacts.is_applicable);
+            const entropies = colNames.map(col => data.columns[col].sensor_artifacts.decimal_entropy);
+            
+            const ctxEnt = document.getElementById('entropyChart').getContext('2d');
+            charts.entropy = new Chart(ctxEnt, {
+                type: 'bar',
+                data: {
+                    labels: colNames,
+                    datasets: [
+                        {
+                            label: 'Mantissa Digit Entropy (bits)',
+                            data: entropies,
+                            backgroundColor: colNames.map((_, i) => {
+                                const ent = entropies[i];
+                                return ent > 3.25 ? 'rgba(239, 68, 68, 0.6)' : 'rgba(16, 185, 129, 0.6)';
+                            }),
+                            borderColor: colNames.map((_, i) => {
+                                const ent = entropies[i];
+                                return ent > 3.25 ? 'var(--color-rose)' : 'var(--color-emerald)';
+                            }),
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Theoretical Max (3.32 bits)',
+                            data: colNames.map(() => 3.322),
+                            type: 'line',
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            borderDash: [5, 5],
+                            borderWidth: 1.5,
+                            fill: false,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: 'var(--text-primary)' }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: 'var(--text-secondary)' }
+                        },
+                        y: {
+                            max: 3.5,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: 'var(--text-secondary)' }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
