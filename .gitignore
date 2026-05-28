@@ -198,6 +198,9 @@ cython_debug/
 node_modules/
 .next/
 out/
+# Allow frontend src/lib (overrides the Python lib/ rule above)
+!frontend/src/lib/
+!frontend/src/lib/**
 
 # Visual Studio Code
 #   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
