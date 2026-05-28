@@ -517,15 +517,17 @@ def extract_dataset_links(full_text: str) -> list[dict]:
 
 
 def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
-    """Extract figures from a PDF using caption-anchored detection.
+    """Extract figures from a PDF using DocLayout-YOLO for layout detection.
 
-    Strategy: Find "Fig. X" / "Figure X" captions via text extraction,
-    then extract the visual region above each caption by scanning upward
-    for whitespace boundaries.
+    Uses a YOLO model trained specifically on academic document layouts to
+    detect figure regions. This handles vector graphics, composite figures,
+    and multi-panel layouts correctly because it detects at the semantic level.
 
-    Phase 1: Find figure captions using PyMuPDF text extraction
-    Phase 2: Render page at 300 DPI, scan upward from caption to find figure bounds
-    Phase 3: Crop the figure region (including caption)
+    Steps:
+    1. Render each page at 300 DPI
+    2. Run DocLayout-YOLO to detect 'figure' regions
+    3. Crop each detected figure from the rendered page
+    4. Optionally include the figure caption if detected nearby
 
     Args:
         pdf_bytes: Raw PDF file bytes.
@@ -537,19 +539,15 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
     zoom = DPI / 72
     matrix = fitz.Matrix(zoom, zoom)
 
-    # Caption detection pattern
-    CAPTION_PATTERN = re.compile(
-        r'(Extended\s+Data\s+)?Fig(ure)?\.?\s*\d+',
-        re.IGNORECASE
-    )
+    CONFIDENCE_THRESHOLD = 0.3
+    PADDING = 10  # pixels
+    MIN_WIDTH = 100
+    MIN_HEIGHT = 80
 
-    # Whitespace detection parameters
-    WHITE_THRESHOLD = 245
-    WHITE_ROW_RATIO = 0.95
-    MIN_GAP_HEIGHT = 8  # pixels — minimum whitespace band to count as boundary
-    MAX_UPWARD_SEARCH = 2000  # pixels — max distance to search upward
-    PADDING = 8  # pixels
-    MIN_FIG_HEIGHT = 100  # pixels — minimum figure height to keep
+    # Load model (cached after first call)
+    model = _get_doclayout_model()
+    if model is None:
+        return []
 
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -564,95 +562,114 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
             try:
                 page = doc[page_index]
 
-                # === Phase 1: Find figure captions ===
-                captions = _find_figure_captions(page, CAPTION_PATTERN)
-
-                if not captions:
-                    continue
-
-                # === Phase 2: Render page and extract figure regions ===
+                # Render page
                 pixmap = page.get_pixmap(matrix=matrix)
                 img_height = pixmap.height
                 img_width = pixmap.width
 
-                # Convert to numpy array
+                # Convert to numpy array (RGB for YOLO)
                 img_data = pixmap.samples
                 n = pixmap.n
                 if n == 4:
                     img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(
                         img_height, img_width, 4
                     ).copy()
-                    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGBA2BGR)
+                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_RGBA2RGB)
                 elif n == 3:
                     img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(
                         img_height, img_width, 3
                     ).copy()
-                    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR)
+                    img_rgb = img_array
                 else:
                     img_array = np.frombuffer(img_data, dtype=np.uint8).reshape(
                         img_height, img_width
                     ).copy()
-                    img_bgr = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
+                    img_rgb = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
 
-                gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+                # Save temp image for YOLO inference
+                import tempfile
+                import os
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+                    temp_path = f.name
+                    cv2.imwrite(temp_path, cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
 
-                # Process each caption
-                for caption in captions:
-                    try:
-                        # Scale caption bbox to pixel coordinates at render DPI
-                        cap_x0 = int(caption["bbox"][0] * zoom)
-                        cap_y0 = int(caption["bbox"][1] * zoom)
-                        cap_x1 = int(caption["bbox"][2] * zoom)
-                        cap_y1 = int(caption["bbox"][3] * zoom)
+                try:
+                    # Run inference
+                    results = model.predict(
+                        temp_path,
+                        imgsz=1024,
+                        conf=CONFIDENCE_THRESHOLD,
+                        device='cpu',
+                        verbose=False,
+                    )
+                finally:
+                    os.unlink(temp_path)
 
-                        # Figure region is ABOVE the caption
-                        # Search upward from caption top to find whitespace boundary
-                        fig_bottom = cap_y0  # top of caption = bottom of figure
+                if not results or len(results) == 0:
+                    continue
 
-                        # Determine horizontal bounds — use caption width but expand
-                        # to capture full-width figures
-                        fig_x0 = max(0, cap_x0 - 20)
-                        fig_x1 = min(img_width, cap_x1 + 20)
+                result = results[0]
+                boxes = result.boxes
 
-                        # For two-column papers, figure might span the column
-                        # Expand to check if figure is wider than caption
-                        # Look at the row just above caption for content bounds
-                        if fig_bottom > 10:
-                            check_row = gray[fig_bottom - 10:fig_bottom, :]
-                            col_has_content = np.any(check_row < 200, axis=0)
-                            content_cols = np.where(col_has_content)[0]
-                            if len(content_cols) > 0:
-                                fig_x0 = max(0, int(content_cols[0]) - 10)
-                                fig_x1 = min(img_width, int(content_cols[-1]) + 10)
+                if boxes is None or len(boxes) == 0:
+                    continue
 
-                        # Search upward for whitespace boundary
-                        fig_top = _find_top_boundary(
-                            gray, fig_bottom, fig_x0, fig_x1,
-                            WHITE_THRESHOLD, WHITE_ROW_RATIO,
-                            MIN_GAP_HEIGHT, MAX_UPWARD_SEARCH
-                        )
+                # Collect figure and caption boxes
+                figure_boxes = []
+                caption_boxes = []
 
-                        # Include caption in the crop
-                        crop_bottom = min(img_height, cap_y1 + PADDING)
+                for i in range(len(boxes)):
+                    cls_id = int(boxes.cls[i].item())
+                    conf = float(boxes.conf[i].item())
+                    xyxy = boxes.xyxy[i].cpu().numpy()
 
-                        # Validate figure height
-                        fig_height = crop_bottom - fig_top
-                        if fig_height < MIN_FIG_HEIGHT:
+                    if cls_id == 3 and conf >= CONFIDENCE_THRESHOLD:  # figure
+                        figure_boxes.append(xyxy)
+                    elif cls_id == 4 and conf >= CONFIDENCE_THRESHOLD:  # figure_caption
+                        caption_boxes.append(xyxy)
+
+                # For each figure, optionally merge with its caption
+                for fig_box in figure_boxes:
+                    x1, y1, x2, y2 = fig_box
+
+                    # Check if there's a caption directly below this figure
+                    for cap_box in caption_boxes:
+                        cx1, cy1, cx2, cy2 = cap_box
+                        # Caption should be below the figure and horizontally overlapping
+                        if cy1 >= y2 - 5 and cy1 <= y2 + 30:
+                            # Check horizontal overlap
+                            overlap = min(x2, cx2) - max(x1, cx1)
+                            if overlap > (x2 - x1) * 0.3:
+                                # Extend figure box to include caption
+                                y2 = max(y2, cy2)
+                                x1 = min(x1, cx1)
+                                x2 = max(x2, cx2)
+                                break
+
+                    # Apply padding
+                    crop_x1 = max(0, int(x1) - PADDING)
+                    crop_y1 = max(0, int(y1) - PADDING)
+                    crop_x2 = min(img_width, int(x2) + PADDING)
+                    crop_y2 = min(img_height, int(y2) + PADDING)
+
+                    w = crop_x2 - crop_x1
+                    h = crop_y2 - crop_y1
+
+                    if w < MIN_WIDTH or h < MIN_HEIGHT:
+                        continue
+
+                    # Crop from the rendered image (BGR for cv2.imencode)
+                    img_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
+                    crop = img_bgr[crop_y1:crop_y2, crop_x1:crop_x2]
+
+                    # Step 2: Split into sub-panels using whitespace projection
+                    sub_panels = _split_by_whitespace_projection(crop)
+
+                    for panel in sub_panels:
+                        if panel.shape[0] < MIN_HEIGHT or panel.shape[1] < MIN_WIDTH:
                             continue
 
-                        # Apply padding
-                        crop_top = max(0, fig_top - PADDING)
-                        crop_x0 = max(0, fig_x0 - PADDING)
-                        crop_x1 = min(img_width, fig_x1 + PADDING)
-
-                        # Crop from original image
-                        crop = img_bgr[crop_top:crop_bottom, crop_x0:crop_x1]
-
-                        if crop.shape[0] < 80 or crop.shape[1] < 100:
-                            continue
-
-                        # Encode as PNG
-                        success, png_bytes = cv2.imencode(".png", crop)
+                        success, png_bytes = cv2.imencode(".png", panel)
                         if not success:
                             continue
 
@@ -660,12 +677,10 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
 
                         visual_assets.append({
                             "page_number": page_number,
-                            "width": crop.shape[1],
-                            "height": crop.shape[0],
+                            "width": panel.shape[1],
+                            "height": panel.shape[0],
                             "image_data": image_data,
                         })
-                    except Exception:
-                        continue
 
             except Exception:
                 continue
@@ -675,77 +690,171 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
     return visual_assets
 
 
-def _find_figure_captions(page, pattern) -> list[dict]:
-    """Find figure captions on a page using text extraction.
+# Cache the model globally so it's only loaded once
+_doclayout_model = None
 
-    Searches for text matching "Fig. X", "Figure X", "Extended Data Fig. X" etc.
-    Returns a list of dicts with 'text', 'bbox' (in PDF points), and 'label'.
+
+def _get_doclayout_model():
+    """Load and cache the DocLayout-YOLO model."""
+    global _doclayout_model
+    if _doclayout_model is not None:
+        return _doclayout_model
+
+    try:
+        from doclayout_yolo import YOLOv10
+        from huggingface_hub import hf_hub_download
+
+        model_path = hf_hub_download(
+            repo_id='juliozhao/DocLayout-YOLO-DocStructBench',
+            filename='doclayout_yolo_docstructbench_imgsz1024.pt',
+        )
+        _doclayout_model = YOLOv10(model_path)
+        return _doclayout_model
+    except Exception:
+        return None
+
+
+def _split_into_subpanels(figure_img: np.ndarray) -> list[np.ndarray]:
+    """Fallback: return figure as-is (splitting is now done via _split_by_labels)."""
+    return [figure_img]
+
+
+def _find_panel_labels_from_pdf(
+    page, crop_x1: int, crop_y1: int, crop_x2: int, crop_y2: int, zoom: float
+) -> list[dict]:
+    """Unused — kept for compatibility."""
+    return []
+
+
+def _split_by_labels(
+    figure_img: np.ndarray, labels: list[dict]
+) -> list[np.ndarray]:
+    """Split a figure into sub-panels by finding cut lines through pure whitespace.
+
+    Strategy:
+    1. Convert to grayscale, threshold to find all content (dark pixels)
+    2. Project content onto x-axis (column projection) and y-axis (row projection)
+    3. Find valleys (runs of zero/near-zero) in both projections
+    4. These valleys are whitespace bands where we can safely cut
+    5. Use the valleys to define a grid of rectangles
+    6. Each rectangle that contains significant content becomes a sub-panel
+
+    This ensures we ONLY cut through whitespace — never through content.
+
+    Args:
+        figure_img: BGR numpy array of the figure.
+        labels: Unused (kept for API compatibility).
+
+    Returns:
+        List of BGR numpy arrays, one per panel.
     """
-    captions = []
-    text_dict = page.get_text("dict")
-
-    for block in text_dict.get("blocks", []):
-        if block.get("type") != 0:
-            continue
-
-        block_text = ""
-        block_bbox = block.get("bbox")
-
-        for line in block.get("lines", []):
-            for span in line.get("spans", []):
-                block_text += span.get("text", "")
-
-        block_text = block_text.strip()
-
-        # Check if this block starts with a figure caption pattern
-        match = pattern.match(block_text)
-        if match:
-            captions.append({
-                "text": block_text[:100],  # first 100 chars
-                "bbox": block_bbox,
-                "label": match.group(0),
-            })
-
-    return captions
+    return _split_by_whitespace_projection(figure_img)
 
 
-def _find_top_boundary(
-    gray: np.ndarray,
-    start_y: int,
-    x0: int,
-    x1: int,
-    white_threshold: int,
-    white_ratio: float,
-    min_gap_height: int,
-    max_search: int,
-) -> int:
-    """Scan upward from start_y to find the top boundary of a figure.
+def _split_by_whitespace_projection(figure_img: np.ndarray) -> list[np.ndarray]:
+    """Split a figure by finding lines that pass through ONLY whitespace.
 
-    Looks for a horizontal band of whitespace (rows where most pixels are white)
-    within the x0-x1 column range. Returns the y coordinate of the figure top.
+    Scans every row and column. A valid cut line must have ALL pixels
+    (100%) be white/near-white. This guarantees we never cut through content.
+
+    Then uses those valid cut lines to form a grid of content rectangles.
     """
-    gap_count = 0
-    search_limit = max(0, start_y - max_search)
+    h, w = figure_img.shape[:2]
 
-    for y in range(start_y - 1, search_limit, -1):
-        # Check if this row is mostly white in the figure's column range
-        row = gray[y, x0:x1]
-        if len(row) == 0:
-            continue
+    if h < 200 or w < 200:
+        return [figure_img]
 
-        white_pixels = np.sum(row >= white_threshold)
-        ratio = white_pixels / len(row)
+    gray = cv2.cvtColor(figure_img, cv2.COLOR_BGR2GRAY)
 
-        if ratio >= white_ratio:
-            gap_count += 1
-            if gap_count >= min_gap_height:
-                # Found a whitespace band — figure top is just below it
-                return y + min_gap_height
+    # Very strict: a pixel is "white" only if >= 240
+    WHITE_THRESH = 240
+    # A line is a valid cut only if 100% of pixels are white
+    REQUIRED_WHITE_RATIO = 1.0
+    # Minimum consecutive white lines to form a gap (prevents cutting at single-pixel noise)
+    MIN_GAP_PIXELS = 6
+    # Minimum panel size
+    MIN_PANEL_SIZE = 80
+    # Don't consider gaps in the outer 2% margin (those are just page margins)
+    MARGIN_RATIO = 0.02
+
+    margin_h = int(h * MARGIN_RATIO)
+    margin_w = int(w * MARGIN_RATIO)
+
+    # Find horizontal gaps: rows where EVERY pixel is white
+    h_is_white = np.array([
+        np.all(gray[y, :] >= WHITE_THRESH)
+        for y in range(h)
+    ])
+
+    # Find vertical gaps: columns where EVERY pixel is white
+    v_is_white = np.array([
+        np.all(gray[:, x] >= WHITE_THRESH)
+        for x in range(w)
+    ])
+
+    # Find horizontal gap bands (consecutive all-white rows)
+    h_gaps = []
+    in_gap = False
+    gap_start = 0
+    for y in range(h):
+        if h_is_white[y]:
+            if not in_gap:
+                gap_start = y
+                in_gap = True
         else:
-            gap_count = 0
+            if in_gap:
+                if y - gap_start >= MIN_GAP_PIXELS:
+                    # Only count if not in the margin
+                    if gap_start > margin_h and y < h - margin_h:
+                        h_gaps.append((gap_start, y))
+                in_gap = False
 
-    # No whitespace found — use the search limit
-    return search_limit
+    # Find vertical gap bands (consecutive all-white columns)
+    v_gaps = []
+    in_gap = False
+    gap_start = 0
+    for x in range(w):
+        if v_is_white[x]:
+            if not in_gap:
+                gap_start = x
+                in_gap = True
+        else:
+            if in_gap:
+                if x - gap_start >= MIN_GAP_PIXELS:
+                    if gap_start > margin_w and x < w - margin_w:
+                        v_gaps.append((gap_start, x))
+                in_gap = False
+
+    # If no gaps found, return as-is
+    if not h_gaps and not v_gaps:
+        return [figure_img]
+
+    # Build cut positions from gap midpoints
+    h_cuts = [0] + [int((g[0] + g[1]) / 2) for g in h_gaps] + [h]
+    v_cuts = [0] + [int((g[0] + g[1]) / 2) for g in v_gaps] + [w]
+
+    # Generate grid cells
+    panels = []
+    for i in range(len(h_cuts) - 1):
+        for j in range(len(v_cuts) - 1):
+            y1, y2 = h_cuts[i], h_cuts[i + 1]
+            x1, x2 = v_cuts[j], v_cuts[j + 1]
+
+            if (y2 - y1) < MIN_PANEL_SIZE or (x2 - x1) < MIN_PANEL_SIZE:
+                continue
+
+            # Check cell has content
+            cell = gray[y1:y2, x1:x2]
+            dark_pixels = np.sum(cell < WHITE_THRESH)
+            if dark_pixels < 50:  # basically empty
+                continue
+
+            panels.append(figure_img[y1:y2, x1:x2])
+
+    if len(panels) <= 1:
+        return [figure_img]
+
+    return panels
 
 
 def _cluster_rects(rects: list, margin: float = 5) -> list:
