@@ -21,6 +21,7 @@ class VisualAsset(BaseModel):
     width: int  # pixels
     height: int  # pixels
     image_data: str  # base64-encoded PNG
+    type: str = "chart"  # "chart", "image", or "other"
 
 
 class DatasetLink(BaseModel):

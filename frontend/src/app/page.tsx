@@ -17,6 +17,7 @@ interface VisualAsset {
   width: number;
   height: number;
   image_data: string;
+  type: string;
 }
 
 interface DatasetLink {
@@ -504,26 +505,48 @@ export default function Home() {
                 </DashboardSection>
               )}
 
-              {/* Figures & Images */}
-              {paper.visual_assets && paper.visual_assets.length > 0 && (
-                <DashboardSection title="Figures & Images" icon="content">
+              {/* Charts */}
+              {paper.visual_assets && paper.visual_assets.filter(a => a.type === 'chart').length > 0 && (
+                <DashboardSection title="Charts & Graphs" icon="methods">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-                    {paper.visual_assets.map((asset, i) => (
+                    {paper.visual_assets.filter(a => a.type === 'chart').map((asset, i) => (
                       <div
                         key={i}
-                        className="relative group rounded-lg overflow-hidden border border-gray-700/50 bg-white"
+                        className="relative group rounded-lg overflow-hidden border border-blue-500/20 bg-white"
                       >
                         <img
                           src={`data:image/png;base64,${asset.image_data}`}
-                          alt={`Figure from page ${asset.page_number}`}
+                          alt={`Chart from page ${asset.page_number}`}
                           className="w-full h-auto"
                         />
                         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
                           <span className="text-xs text-white/80 font-medium">
                             Page {asset.page_number}
                           </span>
-                          <span className="text-xs text-white/50 ml-2">
-                            {asset.width}×{asset.height}px
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </DashboardSection>
+              )}
+
+              {/* Images */}
+              {paper.visual_assets && paper.visual_assets.filter(a => a.type === 'image').length > 0 && (
+                <DashboardSection title="Images & Diagrams" icon="content">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+                    {paper.visual_assets.filter(a => a.type === 'image').map((asset, i) => (
+                      <div
+                        key={i}
+                        className="relative group rounded-lg overflow-hidden border border-green-500/20 bg-white"
+                      >
+                        <img
+                          src={`data:image/png;base64,${asset.image_data}`}
+                          alt={`Image from page ${asset.page_number}`}
+                          className="w-full h-auto"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
+                          <span className="text-xs text-white/80 font-medium">
+                            Page {asset.page_number}
                           </span>
                         </div>
                       </div>

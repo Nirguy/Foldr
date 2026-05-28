@@ -669,6 +669,13 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
                         if panel.shape[0] < MIN_HEIGHT or panel.shape[1] < MIN_WIDTH:
                             continue
 
+                        # Step 3: Classify the panel
+                        panel_type = _classify_panel(panel)
+
+                        # Discard "other" (leftover labels, fragments)
+                        if panel_type == "other":
+                            continue
+
                         success, png_bytes = cv2.imencode(".png", panel)
                         if not success:
                             continue
@@ -680,6 +687,7 @@ def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
                             "width": panel.shape[1],
                             "height": panel.shape[0],
                             "image_data": image_data,
+                            "type": panel_type,
                         })
 
             except Exception:
@@ -752,109 +760,576 @@ def _split_by_labels(
 
 
 def _split_by_whitespace_projection(figure_img: np.ndarray) -> list[np.ndarray]:
-    """Split a figure by finding lines that pass through ONLY whitespace.
+    """Split a figure into sub-panels.
 
-    Scans every row and column. A valid cut line must have ALL pixels
-    (100%) be white/near-white. This guarantees we never cut through content.
+    Strategy:
+    1. First pass: strict 100% white recursive split
+    2. For each resulting piece, check if it contains MULTIPLE graphs
+       (detected by finding multiple axis/number regions)
+    3. Only apply relaxed splitting on pieces that have multiple graphs
 
-    Then uses those valid cut lines to form a grid of content rectangles.
+    This avoids over-splitting single graphs while still breaking apart
+    multi-graph panels.
     """
     h, w = figure_img.shape[:2]
 
     if h < 200 or w < 200:
         return [figure_img]
 
-    gray = cv2.cvtColor(figure_img, cv2.COLOR_BGR2GRAY)
+    # Step 1: Strict recursive split (100% white lines only)
+    pieces = _recursive_split(figure_img, max_depth=4, depth=0)
 
-    # Very strict: a pixel is "white" only if >= 240
-    WHITE_THRESH = 240
-    # A line is a valid cut only if 100% of pixels are white
-    REQUIRED_WHITE_RATIO = 1.0
-    # Minimum consecutive white lines to form a gap (prevents cutting at single-pixel noise)
-    MIN_GAP_PIXELS = 6
-    # Minimum panel size
-    MIN_PANEL_SIZE = 80
-    # Don't consider gaps in the outer 2% margin (those are just page margins)
-    MARGIN_RATIO = 0.02
+    # Step 2: For each piece, check if it contains multiple graphs
+    # Only apply relaxed split on those
+    refined = []
+    for piece in pieces:
+        ph, pw = piece.shape[:2]
+        if ph < 200 or pw < 200:
+            refined.append(piece)
+            continue
 
-    margin_h = int(h * MARGIN_RATIO)
-    margin_w = int(w * MARGIN_RATIO)
+        # Count how many separate axis/number regions exist in this piece
+        num_graphs = _count_graph_regions(piece)
 
-    # Find horizontal gaps: rows where EVERY pixel is white
-    h_is_white = np.array([
-        np.all(gray[y, :] >= WHITE_THRESH)
-        for y in range(h)
-    ])
-
-    # Find vertical gaps: columns where EVERY pixel is white
-    v_is_white = np.array([
-        np.all(gray[:, x] >= WHITE_THRESH)
-        for x in range(w)
-    ])
-
-    # Find horizontal gap bands (consecutive all-white rows)
-    h_gaps = []
-    in_gap = False
-    gap_start = 0
-    for y in range(h):
-        if h_is_white[y]:
-            if not in_gap:
-                gap_start = y
-                in_gap = True
+        if num_graphs >= 4:
+            # This piece has many graphs — try relaxed split
+            sub = _recursive_split_relaxed(piece, max_depth=2, depth=0)
+            refined.extend(sub)
         else:
-            if in_gap:
-                if y - gap_start >= MIN_GAP_PIXELS:
-                    # Only count if not in the margin
-                    if gap_start > margin_h and y < h - margin_h:
-                        h_gaps.append((gap_start, y))
-                in_gap = False
+            refined.append(piece)
 
-    # Find vertical gap bands (consecutive all-white columns)
-    v_gaps = []
-    in_gap = False
-    gap_start = 0
-    for x in range(w):
-        if v_is_white[x]:
-            if not in_gap:
-                gap_start = x
-                in_gap = True
-        else:
-            if in_gap:
-                if x - gap_start >= MIN_GAP_PIXELS:
-                    if gap_start > margin_w and x < w - margin_w:
-                        v_gaps.append((gap_start, x))
-                in_gap = False
-
-    # If no gaps found, return as-is
-    if not h_gaps and not v_gaps:
-        return [figure_img]
-
-    # Build cut positions from gap midpoints
-    h_cuts = [0] + [int((g[0] + g[1]) / 2) for g in h_gaps] + [h]
-    v_cuts = [0] + [int((g[0] + g[1]) / 2) for g in v_gaps] + [w]
-
-    # Generate grid cells
-    panels = []
-    for i in range(len(h_cuts) - 1):
-        for j in range(len(v_cuts) - 1):
-            y1, y2 = h_cuts[i], h_cuts[i + 1]
-            x1, x2 = v_cuts[j], v_cuts[j + 1]
-
-            if (y2 - y1) < MIN_PANEL_SIZE or (x2 - x1) < MIN_PANEL_SIZE:
-                continue
-
-            # Check cell has content
-            cell = gray[y1:y2, x1:x2]
-            dark_pixels = np.sum(cell < WHITE_THRESH)
-            if dark_pixels < 50:  # basically empty
-                continue
-
-            panels.append(figure_img[y1:y2, x1:x2])
+    # Step 3: Merge small fragments
+    panels = _merge_small_fragments(refined, figure_img)
 
     if len(panels) <= 1:
         return [figure_img]
 
     return panels
+
+
+def _count_graph_regions(img: np.ndarray) -> int:
+    """Count how many separate graphs exist by detecting distinct axis lines.
+
+    Uses HoughLinesP to find long straight black lines (axes).
+    Clusters them by position to count distinct graphs.
+
+    A graph typically has:
+    - A horizontal axis line (x-axis) in its lower portion
+    - A vertical axis line (y-axis) on its left side
+
+    Multiple horizontal axes at different y-positions = multiple graphs stacked.
+    Multiple vertical axes at different x-positions = multiple graphs side by side.
+
+    Returns: estimated number of separate graphs.
+    """
+    h, w = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Threshold to get only very dark pixels (black lines)
+    _, binary = cv2.threshold(gray, 50, 255, cv2.THRESH_BINARY_INV)
+
+    # Detect lines using HoughLinesP
+    # Minimum line length: 20% of the smaller dimension
+    min_line_len = int(min(h, w) * 0.15)
+
+    lines = cv2.HoughLinesP(binary, 1, np.pi / 180, threshold=80,
+                             minLineLength=min_line_len, maxLineGap=5)
+
+    if lines is None:
+        return 1
+
+    # Separate into horizontal and vertical lines
+    h_axes_y = []  # y-positions of horizontal axis lines
+    v_axes_x = []  # x-positions of vertical axis lines
+
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        length = (dx**2 + dy**2) ** 0.5
+
+        # Horizontal line: nearly flat, long enough
+        if dy < 5 and dx > min_line_len:
+            h_axes_y.append((y1 + y2) // 2)
+
+        # Vertical line: nearly vertical, long enough
+        elif dx < 5 and dy > min_line_len:
+            v_axes_x.append((x1 + x2) // 2)
+
+    # Cluster horizontal axes by y-position
+    # Two axes must be at least 15% of height apart to be different graphs
+    h_clusters = _cluster_positions(h_axes_y, threshold=h * 0.15)
+
+    # Cluster vertical axes by x-position
+    v_clusters = _cluster_positions(v_axes_x, threshold=w * 0.15)
+
+    # Number of graphs = max of horizontal or vertical axis count
+    return max(len(h_clusters), len(v_clusters), 1)
+
+
+def _cluster_positions(positions: list, threshold: float) -> list:
+    """Cluster nearby positions into groups."""
+    if not positions:
+        return []
+
+    sorted_pos = sorted(set(positions))
+    clusters = [[sorted_pos[0]]]
+
+    for p in sorted_pos[1:]:
+        if p - clusters[-1][-1] < threshold:
+            clusters[-1].append(p)
+        else:
+            clusters.append([p])
+
+    return clusters
+
+
+def _merge_small_fragments(
+    pieces: list[np.ndarray], original: np.ndarray
+) -> list[np.ndarray]:
+    """Merge small fragments (labels, titles, axis text) with their nearest panel.
+
+    A fragment is "small" if:
+    - Its area is less than 15% of the average panel area, OR
+    - It's very narrow (width < 25% of average) or very short (height < 25% of average)
+
+    Small fragments get merged with the nearest larger panel by expanding
+    that panel's crop to include the fragment.
+    """
+    if len(pieces) <= 1:
+        return pieces
+
+    # Calculate areas and dimensions
+    areas = [p.shape[0] * p.shape[1] for p in pieces]
+    heights = [p.shape[0] for p in pieces]
+    widths = [p.shape[1] for p in pieces]
+
+    # Determine what counts as a "real panel" vs a "fragment"
+    # Use median to be robust against outliers
+    sorted_areas = sorted(areas)
+    median_area = sorted_areas[len(sorted_areas) // 2]
+    median_h = sorted(heights)[len(heights) // 2]
+    median_w = sorted(widths)[len(widths) // 2]
+
+    # Classify each piece
+    MIN_AREA_RATIO = 0.15  # must be at least 15% of median area
+    MIN_DIM_RATIO = 0.25   # must be at least 25% of median dimension
+
+    is_panel = []
+    for i, p in enumerate(pieces):
+        area_ok = areas[i] >= median_area * MIN_AREA_RATIO
+        h_ok = heights[i] >= median_h * MIN_DIM_RATIO
+        w_ok = widths[i] >= median_w * MIN_DIM_RATIO
+        is_panel.append(area_ok and h_ok and w_ok)
+
+    # If everything is a panel or everything is a fragment, return as-is
+    panel_count = sum(is_panel)
+    if panel_count == 0 or panel_count == len(pieces):
+        return pieces
+
+    # Return only the real panels (fragments are part of the panel they were split from)
+    # Since we can't easily re-merge spatially without tracking positions,
+    # just filter out the tiny fragments
+    result = [p for i, p in enumerate(pieces) if is_panel[i]]
+
+    return result if result else pieces
+
+
+def _classify_panel(panel: np.ndarray) -> str:
+    """Classify a panel as 'chart', 'image', or 'other'.
+
+    Logic:
+    1. If mostly text → 'other' (discard)
+    2. If high-resolution continuous tones (not a simple drawing) → 'image'
+    3. Otherwise it's a graph candidate:
+       - If it has labels/scales with numbers → 'chart' (keep)
+       - If no labels/numbers detected → 'other' (unlabeled graph, discard)
+
+    Returns: 'chart', 'image', or 'other'
+    """
+    h, w = panel.shape[:2]
+    area = h * w
+
+    gray = cv2.cvtColor(panel, cv2.COLOR_BGR2GRAY)
+
+    WHITE_THRESH = 235
+    content_mask = gray < WHITE_THRESH
+    content_pixels = np.sum(content_mask)
+    content_ratio = content_pixels / area
+
+    # Too little content = fragment
+    if content_ratio < 0.03:
+        return "other"
+
+    # === Step 1: Is it mostly text? ===
+    _, binary = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if contours:
+        text_like_area = 0
+        total_contour_area = 0
+        for c in contours:
+            x, y, cw, ch = cv2.boundingRect(c)
+            ca = cv2.contourArea(c)
+            total_contour_area += ca
+            # Text characters: small, wide-ish, consistent height
+            if ch < h * 0.06 and cw < w * 0.2 and ch > 3 and cw > 2:
+                text_like_area += ca
+
+        if total_contour_area > 0:
+            text_ratio = text_like_area / total_contour_area
+            # If >65% of content is text-shaped, it's text-only
+            if text_ratio > 0.65 and content_ratio < 0.30:
+                return "other"
+
+    # === Step 2: Is it a high-resolution image (photo, microscopy, scan)? ===
+    # Images have: many unique gray values, high content fill, continuous tones
+    interior = gray[int(h * 0.1):int(h * 0.9), int(w * 0.1):int(w * 0.9)]
+    is_image = False
+
+    if interior.size > 100:
+        unique_grays = len(np.unique(interior))
+        white_ratio = np.sum(gray >= WHITE_THRESH) / area
+
+        # High tonal range + fills most of the area + not mostly white
+        if unique_grays > 100 and content_ratio > 0.45 and white_ratio < 0.45:
+            is_image = True
+
+        # Also check: if very few white pixels and lots of color variation
+        if not is_image and white_ratio < 0.25 and unique_grays > 80:
+            is_image = True
+
+        # Gray background fills (like microscopy with gray bg)
+        if not is_image and content_ratio > 0.7 and unique_grays > 60:
+            is_image = True
+
+    if is_image:
+        return "image"
+
+    # === Step 3: It's a graph candidate. Does it have labels/scales with numbers? ===
+    # Must have BOTH: numbers on axes AND actual axis lines AND substantial plot area
+    has_numbers = _detect_number_labels(gray, h, w)
+    has_axes = _detect_axis_lines(gray, h, w)
+    has_plot_content = _has_substantial_plot_area(gray, h, w)
+
+    if has_numbers and has_axes and has_plot_content:
+        return "chart"
+
+    # No proper chart structure → discard
+    return "other"
+
+
+def _detect_number_labels(gray: np.ndarray, h: int, w: int) -> bool:
+    """Detect if a panel has numeric axis labels/scales using OCR.
+
+    Runs OCR on the bottom and left edge strips to find actual numbers.
+    Numbers must be at least 2 digits found in the axis region.
+
+    Returns True if numeric labels are detected.
+    """
+    import pytesseract
+
+    config = '--psm 6 -c tessedit_char_whitelist=0123456789.,-'
+
+    # Check bottom strip (x-axis labels) — bottom 18%
+    bottom_strip = gray[int(h * 0.82):, :]
+    if bottom_strip.size > 0 and bottom_strip.shape[0] > 10:
+        try:
+            _, bw = cv2.threshold(bottom_strip, 180, 255, cv2.THRESH_BINARY)
+            text = pytesseract.image_to_string(bw, config=config).strip()
+            digits = sum(1 for c in text if c.isdigit())
+            if digits >= 2:
+                return True
+        except Exception:
+            pass
+
+    # Check left strip (y-axis labels) — left 18%
+    left_strip = gray[:, :int(w * 0.18)]
+    if left_strip.size > 0 and left_strip.shape[1] > 10:
+        try:
+            _, bw = cv2.threshold(left_strip, 180, 255, cv2.THRESH_BINARY)
+            text = pytesseract.image_to_string(bw, config=config).strip()
+            digits = sum(1 for c in text if c.isdigit())
+            if digits >= 2:
+                return True
+        except Exception:
+            pass
+
+    return False
+
+
+def _detect_axis_lines(gray: np.ndarray, h: int, w: int) -> bool:
+    """Detect if a panel has axis lines (L-shape: horizontal bottom + vertical left).
+
+    A real chart axis is a strong straight line spanning a significant portion
+    of the panel. Must find at least one axis line.
+
+    Returns True if axis lines are detected.
+    """
+    edges = cv2.Canny(gray, 50, 150)
+
+    # Check for horizontal axis line in bottom half
+    # (between 50-90% height, spanning at least 30% of width)
+    bottom_region = edges[int(h * 0.5):int(h * 0.92), int(w * 0.1):int(w * 0.9)]
+    has_h_axis = False
+    if bottom_region.size > 0:
+        # Project onto rows — a strong horizontal line creates a peak
+        h_proj = np.sum(bottom_region > 0, axis=1)
+        effective_width = int(w * 0.8)
+        if np.max(h_proj) > effective_width * 0.3:
+            has_h_axis = True
+
+    # Check for vertical axis line in left quarter
+    # (between 10-90% height, in left 5-30% of width)
+    left_region = edges[int(h * 0.1):int(h * 0.9), int(w * 0.05):int(w * 0.3)]
+    has_v_axis = False
+    if left_region.size > 0:
+        v_proj = np.sum(left_region > 0, axis=0)
+        effective_height = int(h * 0.8)
+        if np.max(v_proj) > effective_height * 0.3:
+            has_v_axis = True
+
+    # Need at least one axis line
+    return has_h_axis or has_v_axis
+
+
+def _has_substantial_plot_area(gray: np.ndarray, h: int, w: int) -> bool:
+    """Check if the panel has a substantial plot/data area (not just a label with a line).
+
+    A real chart has content in the interior (between the axes), not just
+    at the edges. Checks that the central region has meaningful data.
+
+    Returns True if there's substantial plot content.
+    """
+    WHITE_THRESH = 235
+
+    # Check the interior region (between where axes would be and the edges)
+    # This is roughly the "plot area" — between 15-80% width and 10-75% height
+    interior = gray[int(h * 0.1):int(h * 0.75), int(w * 0.15):int(w * 0.85)]
+
+    if interior.size == 0:
+        return False
+
+    # Content in the interior
+    interior_content = np.sum(interior < WHITE_THRESH) / interior.size
+
+    # A real chart has data in the plot area (bars, lines, points, etc.)
+    # Just a label with a line would have very little interior content
+    # Require at least 3% of the interior to have content
+    if interior_content < 0.03:
+        return False
+
+    # Also check that the panel is big enough to be a real chart
+    # (not just a tiny fragment with a line and some text)
+    if h < 150 and w < 150:
+        return False
+
+    return True
+
+
+def _recursive_split(
+    img: np.ndarray, max_depth: int, depth: int
+) -> list[np.ndarray]:
+    """Recursively split an image by alternating horizontal and vertical cuts."""
+    h, w = img.shape[:2]
+    MIN_PANEL = 80
+    WHITE_THRESH = 240
+    MIN_GAP = 6
+    MARGIN_RATIO = 0.02
+
+    if h < MIN_PANEL or w < MIN_PANEL or depth >= max_depth:
+        return [img]
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+
+    margin_h = int(h * MARGIN_RATIO)
+    margin_w = int(w * MARGIN_RATIO)
+
+    # Try horizontal split first, then vertical
+    # Alternate based on depth: even=horizontal first, odd=vertical first
+    if depth % 2 == 0:
+        axes = ['horizontal', 'vertical']
+    else:
+        axes = ['vertical', 'horizontal']
+
+    for axis in axes:
+        if axis == 'horizontal':
+            # Find rows that are 100% white
+            gaps = []
+            in_gap = False
+            gap_start = 0
+            for y in range(h):
+                is_white = np.all(gray[y, :] >= WHITE_THRESH)
+                if is_white:
+                    if not in_gap:
+                        gap_start = y
+                        in_gap = True
+                else:
+                    if in_gap:
+                        if y - gap_start >= MIN_GAP and gap_start > margin_h and y < h - margin_h:
+                            gaps.append((gap_start, y))
+                        in_gap = False
+
+            if gaps:
+                # Split at gap midpoints
+                cuts = [0] + [int((g[0] + g[1]) / 2) for g in gaps] + [h]
+                strips = []
+                for i in range(len(cuts) - 1):
+                    y1, y2 = cuts[i], cuts[i + 1]
+                    if y2 - y1 >= MIN_PANEL:
+                        strips.append(img[y1:y2, :])
+
+                if len(strips) > 1:
+                    # Recursively split each strip
+                    results = []
+                    for strip in strips:
+                        results.extend(_recursive_split(strip, max_depth, depth + 1))
+                    return results
+
+        else:  # vertical
+            # Find columns that are 100% white
+            gaps = []
+            in_gap = False
+            gap_start = 0
+            for x in range(w):
+                is_white = np.all(gray[:, x] >= WHITE_THRESH)
+                if is_white:
+                    if not in_gap:
+                        gap_start = x
+                        in_gap = True
+                else:
+                    if in_gap:
+                        if x - gap_start >= MIN_GAP and gap_start > margin_w and x < w - margin_w:
+                            gaps.append((gap_start, x))
+                        in_gap = False
+
+            if gaps:
+                cuts = [0] + [int((g[0] + g[1]) / 2) for g in gaps] + [w]
+                strips = []
+                for i in range(len(cuts) - 1):
+                    x1, x2 = cuts[i], cuts[i + 1]
+                    if x2 - x1 >= MIN_PANEL:
+                        strips.append(img[:, x1:x2])
+
+                if len(strips) > 1:
+                    results = []
+                    for strip in strips:
+                        results.extend(_recursive_split(strip, max_depth, depth + 1))
+                    return results
+
+    # No splits found on either axis
+    return [img]
+
+
+def _recursive_split_relaxed(
+    img: np.ndarray, max_depth: int, depth: int
+) -> list[np.ndarray]:
+    """Relaxed split for oversized panels.
+
+    For horizontal cuts: checks if the central 85% of each row is white
+    (skips left 10% where panel labels sit and right 5%).
+    For vertical cuts: checks if the central 70% of each column is white
+    (skips top/bottom where titles and shared labels sit).
+
+    Uses 98% white threshold (allows minor anti-aliasing).
+    """
+    h, w = img.shape[:2]
+    MIN_PANEL = 100
+    WHITE_THRESH = 235
+    WHITE_RATIO = 0.98
+    MIN_GAP = 12
+    MARGIN_RATIO = 0.04
+
+    if h < MIN_PANEL or w < MIN_PANEL or depth >= max_depth:
+        return [img]
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if len(img.shape) == 3 else img
+
+    margin_h = int(h * MARGIN_RATIO)
+    margin_w = int(w * MARGIN_RATIO)
+
+    # Try both axes
+    for axis in ['horizontal', 'vertical']:
+        if axis == 'horizontal':
+            # For horizontal cuts: check central 85% of each row
+            # Skip left 10% (panel labels) and right 5%
+            x_start = int(w * 0.10)
+            x_end = int(w * 0.95)
+            check_width = x_end - x_start
+
+            if check_width < 50:
+                continue
+
+            gaps = []
+            in_gap = False
+            gap_start = 0
+            for y in range(h):
+                row_section = gray[y, x_start:x_end]
+                white_ratio = np.sum(row_section >= WHITE_THRESH) / check_width
+                if white_ratio >= WHITE_RATIO:
+                    if not in_gap:
+                        gap_start = y
+                        in_gap = True
+                else:
+                    if in_gap:
+                        if y - gap_start >= MIN_GAP and gap_start > margin_h and y < h - margin_h:
+                            gaps.append((gap_start, y))
+                        in_gap = False
+
+            if gaps:
+                cuts = [0] + [int((g[0] + g[1]) / 2) for g in gaps] + [h]
+                strips = []
+                for i in range(len(cuts) - 1):
+                    y1, y2 = cuts[i], cuts[i + 1]
+                    if y2 - y1 >= MIN_PANEL:
+                        strips.append(img[y1:y2, :])
+
+                if len(strips) > 1:
+                    results = []
+                    for strip in strips:
+                        results.extend(_recursive_split_relaxed(strip, max_depth, depth + 1))
+                    return results
+
+        else:  # vertical
+            # For vertical cuts: check central 70% of each column
+            y_start = int(h * 0.15)
+            y_end = int(h * 0.85)
+            check_height = y_end - y_start
+
+            if check_height < 50:
+                continue
+
+            gaps = []
+            in_gap = False
+            gap_start = 0
+            for x in range(w):
+                col_section = gray[y_start:y_end, x]
+                white_ratio = np.sum(col_section >= WHITE_THRESH) / check_height
+                if white_ratio >= WHITE_RATIO:
+                    if not in_gap:
+                        gap_start = x
+                        in_gap = True
+                else:
+                    if in_gap:
+                        if x - gap_start >= MIN_GAP and gap_start > margin_w and x < w - margin_w:
+                            gaps.append((gap_start, x))
+                        in_gap = False
+
+            if gaps:
+                cuts = [0] + [int((g[0] + g[1]) / 2) for g in gaps] + [w]
+                strips = []
+                for i in range(len(cuts) - 1):
+                    x1, x2 = cuts[i], cuts[i + 1]
+                    if x2 - x1 >= MIN_PANEL:
+                        strips.append(img[:, x1:x2])
+
+                if len(strips) > 1:
+                    results = []
+                    for strip in strips:
+                        results.extend(_recursive_split_relaxed(strip, max_depth, depth + 1))
+                    return results
+
+    return [img]
 
 
 def _cluster_rects(rects: list, margin: float = 5) -> list:
