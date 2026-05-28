@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import ArticleRankingTable from "@/components/ArticleRankingTable";
+import { MOCK_ARTICLES } from "@/lib/mockArticles";
 
 type Message = { role: "user" | "assistant"; text: string };
 
@@ -11,6 +13,8 @@ type ChatSession = {
   fileName?: string;
   createdAt: number;
 };
+
+type Tab = "analysis" | "chat";
 
 const STORAGE_KEY = "foldr-chats";
 
@@ -35,22 +39,17 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [activeTab, setActiveTab] = useState<Tab>("analysis");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load chats from localStorage on mount
   useEffect(() => {
     const saved = loadChats();
     setChats(saved);
-    if (saved.length > 0) {
-      setActiveChatId(saved[0].id);
-    }
+    if (saved.length > 0) setActiveChatId(saved[0].id);
   }, []);
 
-  // Persist chats whenever they change
   useEffect(() => {
-    if (chats.length > 0) {
-      saveChats(chats);
-    }
+    if (chats.length > 0) saveChats(chats);
   }, [chats]);
 
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
@@ -76,7 +75,9 @@ export default function Home() {
       return updated;
     });
     if (activeChatId === id) {
-      setActiveChatId(chats.length > 1 ? chats.find((c) => c.id !== id)?.id || null : null);
+      setActiveChatId(
+        chats.length > 1 ? chats.find((c) => c.id !== id)?.id || null : null
+      );
     }
   };
 
@@ -86,7 +87,6 @@ export default function Home() {
     const dropped = e.dataTransfer.files[0];
     if (dropped && dropped.type === "application/pdf") {
       setFile(dropped);
-      // Update active chat with file name
       if (activeChatId) {
         setChats((prev) =>
           prev.map((c) =>
@@ -113,8 +113,6 @@ export default function Home() {
 
   const handleSend = () => {
     if (!input.trim()) return;
-
-    // If no active chat, create one
     let chatId = activeChatId;
     if (!chatId) {
       const newChat: ChatSession = {
@@ -128,23 +126,20 @@ export default function Home() {
       chatId = newChat.id;
       setActiveChatId(chatId);
     }
-
     const userMsg: Message = { role: "user", text: input };
     const assistantMsg: Message = {
       role: "assistant",
       text: "Analysis coming soon — backend not connected yet.",
     };
-
     setChats((prev) =>
       prev.map((c) => {
         if (c.id !== chatId) return c;
-        const updated = {
+        return {
           ...c,
           messages: [...c.messages, userMsg, assistantMsg],
-          // Set title from first message if still default
-          title: c.messages.length === 0 ? input.trim().slice(0, 40) : c.title,
+          title:
+            c.messages.length === 0 ? input.trim().slice(0, 40) : c.title,
         };
-        return updated;
       })
     );
     setInput("");
@@ -159,11 +154,11 @@ export default function Home() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <aside
         className={`${
           sidebarOpen ? "w-64" : "w-0"
-        } transition-all duration-200 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden`}
+        } transition-all duration-200 bg-gray-900 border-r border-gray-800 flex flex-col overflow-hidden shrink-0`}
       >
         <div className="p-4 border-b border-gray-800 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide">
@@ -209,10 +204,10 @@ export default function Home() {
         </nav>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0">
+      {/* ── Main ── */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="flex items-center gap-3 px-4 py-3 border-b border-gray-800">
+        <header className="flex items-center gap-3 px-4 py-3 border-b border-gray-800 shrink-0">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="text-gray-400 hover:text-white transition-colors"
@@ -221,6 +216,31 @@ export default function Home() {
             ☰
           </button>
           <h1 className="text-lg font-bold tracking-tight">Foldr</h1>
+
+          {/* Tabs */}
+          <div className="ml-4 flex gap-1 bg-gray-800 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab("analysis")}
+              className={`text-sm px-3 py-1 rounded-md transition-colors ${
+                activeTab === "analysis"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              Analysis
+            </button>
+            <button
+              onClick={() => setActiveTab("chat")}
+              className={`text-sm px-3 py-1 rounded-md transition-colors ${
+                activeTab === "chat"
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-400 hover:text-gray-200"
+              }`}
+            >
+              Chat
+            </button>
+          </div>
+
           {activeChat?.fileName && (
             <span className="text-xs text-gray-500 ml-auto">
               📄 {activeChat.fileName}
@@ -228,98 +248,119 @@ export default function Home() {
           )}
         </header>
 
-        {/* Chat area */}
-        <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 max-w-3xl mx-auto w-full overflow-y-auto">
-          {!activeChat ? (
-            <>
-              <p className="text-gray-400 text-center">
-                Upload an academic article and chat about it. We&apos;ll critique it for you.
-              </p>
-              <button
-                onClick={startNewChat}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-medium transition-colors"
-              >
-                Start a new chat
-              </button>
-            </>
-          ) : (
-            <>
-              {/* Upload Area */}
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setIsDragging(true);
-                }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`w-full border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                  isDragging
-                    ? "border-blue-500 bg-blue-500/10"
-                    : file || activeChat.fileName
-                    ? "border-green-500 bg-green-500/10"
-                    : "border-gray-700 hover:border-gray-500"
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  aria-label="Upload PDF article"
-                />
-                {file || activeChat.fileName ? (
-                  <p className="text-green-400 font-medium text-sm">
-                    📄 {file?.name || activeChat.fileName}
-                  </p>
-                ) : (
-                  <p className="text-gray-500 text-sm">
-                    Drag &amp; drop a PDF here, or click to browse
-                  </p>
-                )}
+        {/* ── Analysis Tab ── */}
+        {activeTab === "analysis" && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="max-w-5xl mx-auto">
+              <div className="mb-6">
+                <h2 className="text-xl font-bold text-gray-100">
+                  Article Analysis
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Articles ranked by weighted trust score. Expand any row to
+                  see the full breakdown. Adjust weights to reprioritise.
+                </p>
               </div>
+              <ArticleRankingTable articles={MOCK_ARTICLES} />
+            </div>
+          </div>
+        )}
 
-              {/* Chat Messages */}
-              {messages.length > 0 && (
-                <div className="w-full flex flex-col gap-3 max-h-96 overflow-y-auto rounded-lg bg-gray-900/50 p-4">
-                  {messages.map((msg, i) => (
-                    <div
-                      key={i}
-                      className={`rounded-lg px-4 py-2 max-w-[80%] ${
-                        msg.role === "user"
-                          ? "self-end bg-blue-600 text-white"
-                          : "self-start bg-gray-800 text-gray-200"
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Chat Input */}
-              <div className="w-full flex gap-2">
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask something about the article..."
-                  rows={1}
-                  className="flex-1 resize-none rounded-lg bg-gray-900 border border-gray-700 px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-                  aria-label="Chat message input"
-                />
+        {/* ── Chat Tab ── */}
+        {activeTab === "chat" && (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 gap-6 max-w-3xl mx-auto w-full overflow-y-auto">
+            {!activeChat ? (
+              <>
+                <p className="text-gray-400 text-center">
+                  Upload an academic article and chat about it. We&apos;ll
+                  critique it for you.
+                </p>
                 <button
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                  onClick={startNewChat}
+                  className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 font-medium transition-colors"
                 >
-                  Send
+                  Start a new chat
                 </button>
-              </div>
-            </>
-          )}
-        </div>
+              </>
+            ) : (
+              <>
+                {/* Upload Area */}
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`w-full border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                    isDragging
+                      ? "border-blue-500 bg-blue-500/10"
+                      : file || activeChat.fileName
+                      ? "border-green-500 bg-green-500/10"
+                      : "border-gray-700 hover:border-gray-500"
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    aria-label="Upload PDF article"
+                  />
+                  {file || activeChat.fileName ? (
+                    <p className="text-green-400 font-medium text-sm">
+                      📄 {file?.name || activeChat.fileName}
+                    </p>
+                  ) : (
+                    <p className="text-gray-500 text-sm">
+                      Drag &amp; drop a PDF here, or click to browse
+                    </p>
+                  )}
+                </div>
+
+                {/* Messages */}
+                {messages.length > 0 && (
+                  <div className="w-full flex flex-col gap-3 max-h-96 overflow-y-auto rounded-lg bg-gray-900/50 p-4">
+                    {messages.map((msg, i) => (
+                      <div
+                        key={i}
+                        className={`rounded-lg px-4 py-2 max-w-[80%] ${
+                          msg.role === "user"
+                            ? "self-end bg-blue-600 text-white"
+                            : "self-start bg-gray-800 text-gray-200"
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Input */}
+                <div className="w-full flex gap-2">
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Ask something about the article..."
+                    rows={1}
+                    className="flex-1 resize-none rounded-lg bg-gray-900 border border-gray-700 px-4 py-3 text-gray-100 placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
+                    aria-label="Chat message input"
+                  />
+                  <button
+                    onClick={handleSend}
+                    disabled={!input.trim()}
+                    className="px-5 py-3 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition-colors"
+                  >
+                    Send
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
