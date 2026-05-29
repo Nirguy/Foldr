@@ -79,41 +79,25 @@ def is_predatory(name: str) -> bool:
 
 
 def _find_matches(query: str, entries: list[str]) -> list[str]:
-    """Find entries that match the query using word-boundary and fuzzy matching."""
+    """Find entries whose name or abbreviation exactly matches the query."""
     matched = []
     for entry in entries:
-        if _word_boundary_match(query, entry) or _fuzzy_match(query, entry):
+        # Extract the main name (before parentheses)
+        entry_name = re.split(r'[\(\[]', entry)[0].strip().rstrip('.')
+
+        # Extract abbreviations/aliases inside parentheses
+        aliases = re.findall(r'\(([^)]+)\)', entry)
+        aliases = [a.strip().lower() for a in aliases]
+
+        # Match against the main name or any alias
+        if query == entry_name or query.rstrip('.') == entry_name:
+            matched.append(entry)
+        elif query in aliases or query.rstrip('.') in aliases:
             matched.append(entry)
     return matched
 
 
-def _word_boundary_match(query: str, entry: str) -> bool:
-    """
-    Check if the query appears in the entry as a whole word/phrase,
-    not as part of another word (e.g. "springer" should not match "mainspringer").
-    """
-    pattern = r'(?<![a-z])' + re.escape(query) + r'(?![a-z])'
-    return bool(re.search(pattern, entry))
 
-
-def _fuzzy_match(query: str, entry: str) -> bool:
-    """
-    Perform a slightly fuzzy match: check if all significant words
-    in the query appear in the entry as whole words.
-    """
-    # Remove common short words that don't help matching
-    stop_words = {"the", "of", "and", "for", "in", "a", "an", "to", "ltd", "inc"}
-    query_words = [w for w in query.split() if w not in stop_words and len(w) > 2]
-
-    if not query_words:
-        return False
-
-    # All significant words from the query must appear as whole words in the entry
-    for word in query_words:
-        pattern = r'(?<![a-z])' + re.escape(word) + r'(?![a-z])'
-        if not re.search(pattern, entry):
-            return False
-    return True
 
 
 # --- Example usage ---
