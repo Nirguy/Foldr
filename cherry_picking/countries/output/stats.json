@@ -1,0 +1,9 @@
+{
+  "score": 74,
+  "severity": "High",
+  "cherry_findings": 1,
+  "legitimate_aspects": 1,
+  "mitigating_factors": [
+    "Hidden columns don't contradict shown data"
+  ]
+}

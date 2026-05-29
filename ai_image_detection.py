@@ -112,7 +112,7 @@ def detect_ai_generated_image(image_path):
             score += 0.05
             reasons.append("small image dimensions")
 
-        ai_generated = score >= 0.55
+        ai_generated = score >= 0.80
         label = "Likely AI-generated" if ai_generated else "Likely natural"
         return f"{label} (score: {score:.2f}; reasons: {', '.join(reasons) if reasons else 'none'})"
 

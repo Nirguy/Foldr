@@ -13,13 +13,20 @@ def create_entry(paper_id: str, raw_bytes: bytes) -> None:
         _store[paper_id] = {
             "paper_id": paper_id,
             "status": "extracting",
+            "current_step": "Starting extraction...",
             "raw_bytes": raw_bytes,
             "metadata": None,
             "content": None,
             "skipped_pages": [],
             "research_methods": None,
             "dataset_links": [],
+            "datasets": [],
             "visual_assets": [],
+            "image_evaluation": [],
+            "metadata_evaluation": {},
+            "cherry_picking_evaluation": {},
+            "lie_factor_evaluation": {},
+            "graph_evaluation": {},
         }
 
 

@@ -1,0 +1,79 @@
+[
+  {
+    "file": "pictures\\cortex iamges.png",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  },
+  {
+    "file": "pictures\\hackaton image.png",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  },
+  {
+    "file": "pictures\\new image.png",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  },
+  {
+    "file": "pictures\\WhatsApp Image 2026-05-28 at 14.36.58 (1).jpeg",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  },
+  {
+    "file": "pictures\\WhatsApp Image 2026-05-28 at 14.36.58 (2).jpeg",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  },
+  {
+    "file": "pictures\\WhatsApp Image 2026-05-28 at 14.36.58 (3).jpeg",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  },
+  {
+    "file": "pictures\\WhatsApp Image 2026-05-28 at 14.36.58.jpeg",
+    "verdict": "Unknown",
+    "score": null,
+    "score_normalized": null,
+    "detected_issues": [],
+    "explanation": null,
+    "recommendation": null,
+    "raw_output": "",
+    "error": null
+  }
+]

@@ -222,7 +222,7 @@ def _extract_journal(meta: dict, first_page_text: str) -> str | None:
         for key in ("subject", "keywords"):
             value = meta.get(key, "").strip()
             if value and _looks_like_journal(value):
-                return value
+                return _clean_journal_name(value)
 
         # Heuristic: look for journal-like patterns in first page text
         if first_page_text:
@@ -236,18 +236,31 @@ def _extract_journal(meta: dict, first_page_text: str) -> str | None:
                     re.IGNORECASE,
                 )
                 if journal_match:
-                    return journal_match.group(1).strip()
+                    return _clean_journal_name(journal_match.group(1).strip())
 
                 # Look for lines with volume/issue indicators
                 if re.search(r'\bVol\.?\s*\d+', line, re.IGNORECASE):
                     # The journal name is likely the text before "Vol."
                     parts = re.split(r'\bVol\.?\s*\d+', line, flags=re.IGNORECASE)
                     if parts[0].strip():
-                        return parts[0].strip().rstrip(',').strip()
+                        return _clean_journal_name(parts[0].strip().rstrip(',').strip())
 
         return None
     except Exception:
         return None
+
+
+def _clean_journal_name(name: str) -> str:
+    """Clean up a journal name by removing trailing/leading artifacts."""
+    # Remove trailing pipes, dashes, colons, semicolons, commas
+    name = re.sub(r'[\s|:;\-,/\\]+$', '', name)
+    # Remove leading pipes, dashes, colons, semicolons
+    name = re.sub(r'^[\s|:;\-,/\\]+', '', name)
+    # Collapse multiple spaces
+    name = re.sub(r'\s{2,}', ' ', name)
+    # Remove any remaining non-printable characters
+    name = ''.join(c for c in name if c.isprintable())
+    return name.strip()
 
 
 def _looks_like_journal(text: str) -> bool:
@@ -516,6 +529,162 @@ def extract_dataset_links(full_text: str) -> list[dict]:
     return found_links
 
 
+def extract_dataset_content(dataset_links: list[dict], max_rows: int = 500) -> list[dict]:
+    """Fetch and parse tabular data from dataset URLs (CSV/Excel).
+
+    For each dataset link, attempts to download the file and parse it into
+    rows and columns. Supports CSV, TSV, XLS, and XLSX files. Also handles
+    GitHub raw URLs and Zenodo download redirects.
+
+    Args:
+        dataset_links: List of dicts from extract_dataset_links (url, source, context).
+        max_rows: Maximum number of rows to keep per dataset (to limit memory).
+
+    Returns:
+        A list of dicts with keys: url, filename, columns, rows, num_rows, truncated, error.
+    """
+    import io
+    import urllib.parse
+    from pathlib import PurePosixPath
+
+    try:
+        import requests
+        import pandas as pd
+    except ImportError:
+        return []
+
+    TIMEOUT = 30  # seconds
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB limit
+
+    # File extensions we can parse
+    TABULAR_EXTENSIONS = {".csv", ".tsv", ".xls", ".xlsx", ".xlsm"}
+
+    results: list[dict] = []
+
+    for link in dataset_links:
+        url = link.get("url", "")
+        if not url:
+            continue
+
+        # Try to determine file type from URL path
+        parsed = urllib.parse.urlparse(url)
+        path = PurePosixPath(parsed.path)
+        ext = path.suffix.lower()
+
+        # GitHub: convert blob URLs to raw URLs
+        if "github.com" in url and "/blob/" in url:
+            url = url.replace("github.com", "raw.githubusercontent.com").replace("/blob/", "/")
+            parsed = urllib.parse.urlparse(url)
+            path = PurePosixPath(parsed.path)
+            ext = path.suffix.lower()
+
+        # If the URL doesn't have a tabular extension, try a HEAD request to check content-type
+        if ext not in TABULAR_EXTENSIONS:
+            try:
+                head_resp = requests.head(url, timeout=TIMEOUT, allow_redirects=True)
+                content_type = head_resp.headers.get("Content-Type", "").lower()
+                content_disp = head_resp.headers.get("Content-Disposition", "")
+
+                # Check content-disposition for filename
+                if "filename=" in content_disp:
+                    fname = content_disp.split("filename=")[-1].strip('" ')
+                    ext = PurePosixPath(fname).suffix.lower()
+
+                # Check content-type
+                if ext not in TABULAR_EXTENSIONS:
+                    if "csv" in content_type or "text/csv" in content_type:
+                        ext = ".csv"
+                    elif "spreadsheet" in content_type or "excel" in content_type:
+                        ext = ".xlsx"
+                    elif "tab-separated" in content_type:
+                        ext = ".tsv"
+                    else:
+                        # Not a tabular file we can parse
+                        continue
+            except Exception:
+                continue
+
+        # Download the file
+        try:
+            resp = requests.get(url, timeout=TIMEOUT, allow_redirects=True, stream=True)
+            resp.raise_for_status()
+
+            # Check size from headers
+            content_length = int(resp.headers.get("Content-Length", 0))
+            if content_length > MAX_FILE_SIZE:
+                results.append({
+                    "url": link["url"],
+                    "filename": path.name or "unknown",
+                    "columns": [],
+                    "rows": [],
+                    "num_rows": 0,
+                    "truncated": False,
+                    "error": f"File too large ({content_length // (1024*1024)} MB)",
+                })
+                continue
+
+            file_bytes = resp.content
+        except Exception as e:
+            results.append({
+                "url": link["url"],
+                "filename": path.name or "unknown",
+                "columns": [],
+                "rows": [],
+                "num_rows": 0,
+                "truncated": False,
+                "error": f"Download failed: {str(e)[:100]}",
+            })
+            continue
+
+        # Parse the file into a DataFrame
+        try:
+            if ext == ".csv":
+                df = pd.read_csv(io.BytesIO(file_bytes), encoding_errors="replace")
+            elif ext == ".tsv":
+                df = pd.read_csv(io.BytesIO(file_bytes), sep="\t", encoding_errors="replace")
+            elif ext in (".xls", ".xlsx", ".xlsm"):
+                df = pd.read_excel(io.BytesIO(file_bytes))
+            else:
+                continue
+
+            # Clean up: drop fully empty rows/columns
+            df = df.dropna(how="all").dropna(axis=1, how="all")
+
+            num_rows = len(df)
+            truncated = num_rows > max_rows
+            if truncated:
+                df = df.head(max_rows)
+
+            # Convert to serializable format
+            columns = [str(c) for c in df.columns.tolist()]
+            rows = df.fillna("").values.tolist()
+            # Convert numpy types to native Python types
+            rows = [[str(cell) if not isinstance(cell, (int, float, str, bool)) else cell for cell in row] for row in rows]
+
+            results.append({
+                "url": link["url"],
+                "filename": path.name or "unknown",
+                "columns": columns,
+                "rows": rows,
+                "num_rows": num_rows,
+                "truncated": truncated,
+                "error": None,
+            })
+
+        except Exception as e:
+            results.append({
+                "url": link["url"],
+                "filename": path.name or "unknown",
+                "columns": [],
+                "rows": [],
+                "num_rows": 0,
+                "truncated": False,
+                "error": f"Parse failed: {str(e)[:100]}",
+            })
+
+    return results
+
+
 def extract_visual_assets(pdf_bytes: bytes) -> list[dict]:
     """Extract figures from a PDF using DocLayout-YOLO for layout detection.
 
@@ -730,7 +899,7 @@ def _split_into_subpanels(figure_img: np.ndarray) -> list[np.ndarray]:
 def _find_panel_labels_from_pdf(
     page, crop_x1: int, crop_y1: int, crop_x2: int, crop_y2: int, zoom: float
 ) -> list[dict]:
-    """Unused — kept for compatibility."""
+    """Unused ??? kept for compatibility."""
     return []
 
 
@@ -747,7 +916,7 @@ def _split_by_labels(
     5. Use the valleys to define a grid of rectangles
     6. Each rectangle that contains significant content becomes a sub-panel
 
-    This ensures we ONLY cut through whitespace — never through content.
+    This ensures we ONLY cut through whitespace ??? never through content.
 
     Args:
         figure_img: BGR numpy array of the figure.
@@ -792,7 +961,7 @@ def _split_by_whitespace_projection(figure_img: np.ndarray) -> list[np.ndarray]:
         num_graphs = _count_graph_regions(piece)
 
         if num_graphs >= 4:
-            # This piece has many graphs — try relaxed split
+            # This piece has many graphs ??? try relaxed split
             sub = _recursive_split_relaxed(piece, max_depth=2, depth=0)
             refined.extend(sub)
         else:
@@ -939,11 +1108,11 @@ def _classify_panel(panel: np.ndarray) -> str:
     """Classify a panel as 'chart', 'image', or 'other'.
 
     Logic:
-    1. If mostly text → 'other' (discard)
-    2. If high-resolution continuous tones (not a simple drawing) → 'image'
+    1. If mostly text ??? 'other' (discard)
+    2. If high-resolution continuous tones (not a simple drawing) ??? 'image'
     3. Otherwise it's a graph candidate:
-       - If it has labels/scales with numbers → 'chart' (keep)
-       - If no labels/numbers detected → 'other' (unlabeled graph, discard)
+       - If it has labels/scales with numbers ??? 'chart' (keep)
+       - If no labels/numbers detected ??? 'other' (unlabeled graph, discard)
 
     Returns: 'chart', 'image', or 'other'
     """
@@ -1015,7 +1184,7 @@ def _classify_panel(panel: np.ndarray) -> str:
     if has_numbers and has_axes and has_plot_content:
         return "chart"
 
-    # No proper chart structure → discard
+    # No proper chart structure ??? discard
     return "other"
 
 
@@ -1031,7 +1200,7 @@ def _detect_number_labels(gray: np.ndarray, h: int, w: int) -> bool:
 
     config = '--psm 6 -c tessedit_char_whitelist=0123456789.,-'
 
-    # Check bottom strip (x-axis labels) — bottom 18%
+    # Check bottom strip (x-axis labels) ??? bottom 18%
     bottom_strip = gray[int(h * 0.82):, :]
     if bottom_strip.size > 0 and bottom_strip.shape[0] > 10:
         try:
@@ -1043,7 +1212,7 @@ def _detect_number_labels(gray: np.ndarray, h: int, w: int) -> bool:
         except Exception:
             pass
 
-    # Check left strip (y-axis labels) — left 18%
+    # Check left strip (y-axis labels) ??? left 18%
     left_strip = gray[:, :int(w * 0.18)]
     if left_strip.size > 0 and left_strip.shape[1] > 10:
         try:
@@ -1073,7 +1242,7 @@ def _detect_axis_lines(gray: np.ndarray, h: int, w: int) -> bool:
     bottom_region = edges[int(h * 0.5):int(h * 0.92), int(w * 0.1):int(w * 0.9)]
     has_h_axis = False
     if bottom_region.size > 0:
-        # Project onto rows — a strong horizontal line creates a peak
+        # Project onto rows ??? a strong horizontal line creates a peak
         h_proj = np.sum(bottom_region > 0, axis=1)
         effective_width = int(w * 0.8)
         if np.max(h_proj) > effective_width * 0.3:
@@ -1104,7 +1273,7 @@ def _has_substantial_plot_area(gray: np.ndarray, h: int, w: int) -> bool:
     WHITE_THRESH = 235
 
     # Check the interior region (between where axes would be and the edges)
-    # This is roughly the "plot area" — between 15-80% width and 10-75% height
+    # This is roughly the "plot area" ??? between 15-80% width and 10-75% height
     interior = gray[int(h * 0.1):int(h * 0.75), int(w * 0.15):int(w * 0.85)]
 
     if interior.size == 0:
@@ -1420,6 +1589,7 @@ def run_extraction(paper_id: str) -> None:
         return
 
     # Step 1: Extract metadata
+    update_entry(paper_id, current_step="Extracting metadata...")
     try:
         metadata = extract_metadata(raw_bytes)
         update_entry(paper_id, metadata=metadata)
@@ -1427,6 +1597,7 @@ def run_extraction(paper_id: str) -> None:
         update_entry(paper_id, metadata=None)
 
     # Step 2: Extract content
+    update_entry(paper_id, current_step="Extracting text content...")
     content = None
     skipped_pages: list[int] = []
     try:
@@ -1436,6 +1607,7 @@ def run_extraction(paper_id: str) -> None:
         update_entry(paper_id, content=None, skipped_pages=[])
 
     # Step 3: Extract research methods (uses extracted content)
+    update_entry(paper_id, current_step="Analyzing research methods...")
     try:
         research_methods = extract_research_methods(content) if content else None
         update_entry(paper_id, research_methods=research_methods)
@@ -1443,18 +1615,80 @@ def run_extraction(paper_id: str) -> None:
         update_entry(paper_id, research_methods=None)
 
     # Step 4: Extract dataset links (uses extracted content)
+    update_entry(paper_id, current_step="Finding dataset links...")
+    dataset_links = []
     try:
         dataset_links = extract_dataset_links(content) if content else []
         update_entry(paper_id, dataset_links=dataset_links)
     except Exception:
         update_entry(paper_id, dataset_links=[])
 
+    # Step 4b: Parse uploaded dataset file if present
+    update_entry(paper_id, current_step="Parsing dataset file...")
+    try:
+        dataset_file = entry.get("dataset_file")
+        if dataset_file:
+            import io
+            import pandas as pd
+            from pathlib import PurePosixPath
+
+            filename = dataset_file["filename"]
+            file_bytes = dataset_file["bytes"]
+            ext = PurePosixPath(filename).suffix.lower()
+
+            df = None
+            if ext == ".csv":
+                df = pd.read_csv(io.BytesIO(file_bytes), encoding_errors="replace")
+            elif ext == ".tsv":
+                df = pd.read_csv(io.BytesIO(file_bytes), sep="\t", encoding_errors="replace")
+            elif ext in (".xls", ".xlsx", ".xlsm"):
+                df = pd.read_excel(io.BytesIO(file_bytes))
+
+            if df is not None:
+                df = df.dropna(how="all").dropna(axis=1, how="all")
+                num_rows = len(df)
+                max_rows = 500
+                truncated = num_rows > max_rows
+                if truncated:
+                    df = df.head(max_rows)
+
+                columns = [str(c) for c in df.columns.tolist()]
+                rows = df.fillna("").values.tolist()
+                rows = [
+                    [str(cell) if not isinstance(cell, (int, float, str, bool)) else cell for cell in row]
+                    for row in rows
+                ]
+
+                update_entry(paper_id, datasets=[{
+                    "url": f"uploaded://{filename}",
+                    "filename": filename,
+                    "columns": columns,
+                    "rows": rows,
+                    "num_rows": num_rows,
+                    "truncated": truncated,
+                    "error": None,
+                }])
+            else:
+                update_entry(paper_id, datasets=[])
+        else:
+            update_entry(paper_id, datasets=[])
+    except Exception:
+        update_entry(paper_id, datasets=[])
+
     # Step 5: Extract visual assets
+    update_entry(paper_id, current_step="Detecting figures and charts...")
     try:
         visual_assets = extract_visual_assets(raw_bytes)
         update_entry(paper_id, visual_assets=visual_assets)
     except Exception:
         update_entry(paper_id, visual_assets=[])
+
+    # Step 6: Run evaluation modules (AI image detection, predatory check, MNCS, cherry picking, graph analysis)
+    try:
+        from app.evaluator import run_evaluation
+        run_evaluation(paper_id)
+    except Exception:
+        pass
 
     # Mark extraction as complete
     update_entry(paper_id, status="complete")

@@ -1,0 +1,487 @@
+[
+  {
+    "file": "images\\01_truncated_y_axis.png",
+    "num_charts_detected": 7,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 2.4,
+    "overall_score_normalized": 0.24,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "The chart does not show any data points, but a title about revenue comparison. It is impossible to rate the chart based on the given information.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart does not show any data points, but a title about revenue comparison. It is impossible to rate the chart based on the given information.",
+        "error": null
+      },
+      {
+        "chart_index": 3,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "The chart appears to be honest, with the data clearly displayed. There are no obvious issues with the chart's honesty or integrity.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart appears to be honest, with the data clearly displayed. There are no obvious issues with the chart's honesty or integrity.",
+        "error": null
+      },
+      {
+        "chart_index": 4,
+        "verdict": "Not Misleading",
+        "score": 0.9,
+        "score_normalized": 0.09,
+        "detected_issues": [
+          "The chart is not misleading."
+        ],
+        "explanation": "The chart is not misleading. It is a bar chart showing revenue over time. The chart is not manipulative because the data is presented honestly and fairly.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. It is a bar chart showing revenue over time. The chart is not manipulative because the data is presented honestly and fairly.",
+        "error": null
+      },
+      {
+        "chart_index": 5,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it only shows one company, and that company is Company A.",
+          "This could be misleading because it suggests that the chart is only comparing Company A to itself."
+        ],
+        "explanation": "The chart is misleading because it only shows one company, and that company is Company A. This could be misleading because it suggests that the chart is only comparing Company A to itself. The chart also uses the title 'Company A' to highlight the data being presented.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it only shows one company, and that company is Company A. This could be misleading because it suggests that the chart is only comparing Company A to itself. The chart also uses the title 'Company A' to highlight the data being presented.",
+        "error": null
+      },
+      {
+        "chart_index": 6,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it compares the performance of two companies using a single bar.",
+          "This is a common practice in marketing and sales, but it can be misleading because it suggests that one company is performing better than the other."
+        ],
+        "explanation": "The chart is misleading because it compares the performance of two companies using a single bar. This is a common practice in marketing and sales, but it can be misleading because it suggests that one company is performing better than the other. The chart also uses a single bar to represent both companies, which can further mislead viewers. Additionally, the chart does not provide any context or labels to explain what the bars represent.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it compares the performance of two companies using a single bar. This is a common practice in marketing and sales, but it can be misleading because it suggests that one company is performing better than the other. The chart also uses a single bar to represent both companies, which can further mislead viewers. Additionally, the chart does not provide any context or labels to explain what the bars represent.",
+        "error": null
+      },
+      {
+        "chart_index": 7,
+        "verdict": "Not Misleading",
+        "score": 2.4,
+        "score_normalized": 0.24,
+        "detected_issues": [
+          "The chart is misleading because it presents a single data point, which is a common manipulation in misleading charts.",
+          "Overall, the chart is manipulative and misleading."
+        ],
+        "explanation": "The chart is misleading because it presents a single data point, which is a common manipulation in misleading charts. The chart also does not provide any context or labels to explain what the data represents. Overall, the chart is manipulative and misleading.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it presents a single data point, which is a common manipulation in misleading charts. The chart also does not provide any context or labels to explain what the data represents. Overall, the chart is manipulative and misleading.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\02_dual_axes_correlation.png",
+    "num_charts_detected": 1,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 2.1,
+    "overall_score_normalized": 0.21,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 2.1,
+        "score_normalized": 0.21,
+        "detected_issues": [
+          "The chart is not misleading.",
+          "The data is not biased.",
+          "The chart does not have misleading labels.",
+          "The chart is not misleading because the data is presented in a clear and straightforward way."
+        ],
+        "explanation": "The chart is not misleading. The trend is clear and consistent. The chart type is appropriate. The data is not biased. The chart does not omit important data. The chart does not distort data. The chart does not have misleading labels. The chart is not manipulative. The chart is not misleading because the data is presented in a clear and straightforward way.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. The trend is clear and consistent. The chart type is appropriate. The data is not biased. The chart does not omit important data. The chart does not distort data. The chart does not have misleading labels. The chart is not manipulative. The chart is not misleading because the data is presented in a clear and straightforward way.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\03_cherry_picked_range.png",
+    "num_charts_detected": 6,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 2.4,
+    "overall_score_normalized": 0.24,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 2.4,
+        "score_normalized": 0.24,
+        "detected_issues": [
+          "The chart is misleading because it only shows the highest value, 80, and does not show the lowest value, 60.",
+          "This makes the chart appear overly inflated and misleading."
+        ],
+        "explanation": "The chart is misleading because it only shows the highest value, 80, and does not show the lowest value, 60. This makes the chart appear overly inflated and misleading. Additionally, the chart does not provide any context or labels to explain what the data represents.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it only shows the highest value, 80, and does not show the lowest value, 60. This makes the chart appear overly inflated and misleading. Additionally, the chart does not provide any context or labels to explain what the data represents.",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Not Misleading",
+        "score": 0.2,
+        "score_normalized": 0.02,
+        "detected_issues": [
+          "The chart is not misleading."
+        ],
+        "explanation": "The chart is not misleading. It is a line chart showing the stock performance over time. There are no issues found.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. It is a line chart showing the stock performance over time. There are no issues found.",
+        "error": null
+      },
+      {
+        "chart_index": 3,
+        "verdict": "Not Misleading",
+        "score": 2.4,
+        "score_normalized": 0.24,
+        "detected_issues": [
+          "Distorted proportions: no data is shown.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject.",
+          "Distorted proportions: data is shown but not fully represents the subject."
+        ],
+        "explanation": "Manipulative: no data is shown.\nDistorted proportions: no data is shown.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDist",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "Manipulative: no data is shown.\nDistorted proportions: no data is shown.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDistorted proportions: data is shown but not fully represents the subject.\nDist",
+        "error": null
+      },
+      {
+        "chart_index": 4,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "",
+        "error": null
+      },
+      {
+        "chart_index": 5,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "",
+        "error": null
+      },
+      {
+        "chart_index": 6,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because the data is not fully displayed on the chart.",
+          "Furthermore, the chart uses a misleading title that suggests a trend that is not present in the data."
+        ],
+        "explanation": "The chart is misleading because the data is not fully displayed on the chart. Additionally, the chart does not include any labels to help interpret the data. Furthermore, the chart uses a misleading title that suggests a trend that is not present in the data.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because the data is not fully displayed on the chart. Additionally, the chart does not include any labels to help interpret the data. Furthermore, the chart uses a misleading title that suggests a trend that is not present in the data.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\04_3d_pie_chart.png",
+    "num_charts_detected": 2,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 1.4,
+    "overall_score_normalized": 0.14,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 1.4,
+        "score_normalized": 0.14,
+        "detected_issues": [
+          "The chart is not misleading.",
+          "The chart does not show any data that is intentionally misleading or manipulative."
+        ],
+        "explanation": "The chart is not misleading. It is a bar chart, which is a common way to represent categorical data. The title is not manipulative, as it accurately reflects the content of the chart. The chart does not show any data that is intentionally misleading or manipulative.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. It is a bar chart, which is a common way to represent categorical data. The title is not manipulative, as it accurately reflects the content of the chart. The chart does not show any data that is intentionally misleading or manipulative.",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Not Misleading",
+        "score": 0.2,
+        "score_normalized": 0.02,
+        "detected_issues": [
+          "The chart is not misleading."
+        ],
+        "explanation": "The chart is not misleading. The proportions of each product are clearly shown, and the title indicates that the data is not manipulated. The chart does not omit any data, and the labels are understandable.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. The proportions of each product are clearly shown, and the title indicates that the data is not manipulated. The chart does not omit any data, and the labels are understandable.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\05_manipulated_aspect_ratio.png",
+    "num_charts_detected": 1,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 1.2,
+    "overall_score_normalized": 0.12,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it shows a continuous upward trend, while the actual growth trajectory is not linear but rather has periods of rapid growth and periods of slower growth."
+        ],
+        "explanation": "The chart is misleading because it shows a continuous upward trend, while the actual growth trajectory is not linear but rather has periods of rapid growth and periods of slower growth. Additionally, the chart does not include any information about the actual platform users in any given year, only the growth rate. This makes the chart overly optimistic and difficult to interpret.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it shows a continuous upward trend, while the actual growth trajectory is not linear but rather has periods of rapid growth and periods of slower growth. Additionally, the chart does not include any information about the actual platform users in any given year, only the growth rate. This makes the chart overly optimistic and difficult to interpret.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\06_cumulative_misleading.png",
+    "num_charts_detected": 2,
+    "overall_verdict": "Possibly Misleading",
+    "overall_score": 3.1,
+    "overall_score_normalized": 0.31,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Possibly Misleading",
+        "score": 3.1,
+        "score_normalized": 0.31,
+        "detected_issues": [
+          "The chart is not misleading.",
+          "The data is not distorted, as there are no gaps or missing values.",
+          "The chart type is also not misleading."
+        ],
+        "explanation": "The chart is not misleading. It is a simple bar chart. The data is not distorted, as there are no gaps or missing values. The chart type is also not misleading. The title is not manipulative.",
+        "recommendation": "Pay attention to: The chart is not misleading.; The data is not distorted, as there are no gaps or missing values..",
+        "raw_output": "The chart is not misleading. It is a simple bar chart. The data is not distorted, as there are no gaps or missing values. The chart type is also not misleading. The title is not manipulative.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\07_unequal_bins.png",
+    "num_charts_detected": 2,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 1.2,
+    "overall_score_normalized": 0.12,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it only shows one side of the argument."
+        ],
+        "explanation": "The chart is misleading because it only shows one side of the argument. It also uses a limited range of values, which can make it difficult to understand the full picture. Additionally, the chart does not include any context or labels to explain what the data represents.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it only shows one side of the argument. It also uses a limited range of values, which can make it difficult to understand the full picture. Additionally, the chart does not include any context or labels to explain what the data represents.",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Not Misleading",
+        "score": 0.7,
+        "score_normalized": 0.07,
+        "detected_issues": [
+          "The chart is not misleading."
+        ],
+        "explanation": "The chart is not misleading. It is a histogram, which is a common way to display data. The chart does not show any manipulation, as the data is representative of the population.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. It is a histogram, which is a common way to display data. The chart does not show any manipulation, as the data is representative of the population.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\08_inverted_y_axis.png",
+    "num_charts_detected": 2,
+    "overall_verdict": "Possibly Misleading",
+    "overall_score": 3.1,
+    "overall_score_normalized": 0.31,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it only shows the trend of gun deaths and does not provide context on how this trend compares to other years."
+        ],
+        "explanation": "The chart is misleading because it only shows the trend of gun deaths and does not provide context on how this trend compares to other years. Additionally, the chart does not include data on gun ownership or other factors that could influence gun deaths.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it only shows the trend of gun deaths and does not provide context on how this trend compares to other years. Additionally, the chart does not include data on gun ownership or other factors that could influence gun deaths.",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Possibly Misleading",
+        "score": 3.1,
+        "score_normalized": 0.31,
+        "detected_issues": [
+          "The chart is not misleading.",
+          "The chart is not manipulative because it presents data without bias."
+        ],
+        "explanation": "The chart is not misleading. It is a bar chart showing the years 2018 to 2024. The chart is not manipulative because it presents data without bias. The chart does not omit data or manipulate data. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not representative of the whole. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does",
+        "recommendation": "Pay attention to: The chart is not misleading.; The chart is not manipulative because it presents data without bias..",
+        "raw_output": "The chart is not misleading. It is a bar chart showing the years 2018 to 2024. The chart is not manipulative because it presents data without bias. The chart does not omit data or manipulate data. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not representative of the whole. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does not show data that is not relevant to the overall message. The chart does",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\09_misleading_bubble_size.png",
+    "num_charts_detected": 4,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 1.9,
+    "overall_score_normalized": 0.19,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it only shows data for a single year and does not provide any context or explanation for the trend."
+        ],
+        "explanation": "The chart is misleading because it only shows data for a single year and does not provide any context or explanation for the trend. Additionally, the chart does not show any data for other years, making it difficult to compare revenue growth across different periods. Furthermore, the chart does not include any labels or axes, making it impossible to understand what the data represents or how it is measured. Finally, the chart does not provide any context or explanation for the trend, making it difficult to assess the validity of the data.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it only shows data for a single year and does not provide any context or explanation for the trend. Additionally, the chart does not show any data for other years, making it difficult to compare revenue growth across different periods. Furthermore, the chart does not include any labels or axes, making it impossible to understand what the data represents or how it is measured. Finally, the chart does not provide any context or explanation for the trend, making it difficult to assess the validity of the data.",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "",
+        "error": null
+      },
+      {
+        "chart_index": 3,
+        "verdict": "Not Misleading",
+        "score": 1.9,
+        "score_normalized": 0.19,
+        "detected_issues": [
+          "The chart is not misleading."
+        ],
+        "explanation": "The chart is not misleading. It is a simple bar chart showing the values of three different amounts. There is no manipulative aspect to the chart.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is not misleading. It is a simple bar chart showing the values of three different amounts. There is no manipulative aspect to the chart.",
+        "error": null
+      },
+      {
+        "chart_index": 4,
+        "verdict": "Not Misleading",
+        "score": 1.9,
+        "score_normalized": 0.19,
+        "detected_issues": [
+          "The chart is not misleading."
+        ],
+        "explanation": "False. The chart is not misleading. It is a simple circle with a value displayed. There is no manipulation involved.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "False. The chart is not misleading. It is a simple circle with a value displayed. There is no manipulation involved.",
+        "error": null
+      }
+    ],
+    "error": null
+  },
+  {
+    "file": "images\\10_omitted_data.png",
+    "num_charts_detected": 2,
+    "overall_verdict": "Not Misleading",
+    "overall_score": 1.2,
+    "overall_score_normalized": 0.12,
+    "per_chart": [
+      {
+        "chart_index": 1,
+        "verdict": "Not Misleading",
+        "score": 1.2,
+        "score_normalized": 0.12,
+        "detected_issues": [
+          "The chart is misleading because it only shows the profit for one year and does not show the profit for other years."
+        ],
+        "explanation": "The chart is misleading because it only shows the profit for one year and does not show the profit for other years. The chart also does not provide any context for the data. Additionally, the chart does not show the company's revenue over the same period, which would provide a more complete picture of the company's financial performance.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart is misleading because it only shows the profit for one year and does not show the profit for other years. The chart also does not provide any context for the data. Additionally, the chart does not show the company's revenue over the same period, which would provide a more complete picture of the company's financial performance.",
+        "error": null
+      },
+      {
+        "chart_index": 2,
+        "verdict": "Not Misleading",
+        "score": 0.0,
+        "score_normalized": 0.0,
+        "detected_issues": [],
+        "explanation": "The chart appears to be honest, with no obvious issues. However, the lack of data for the future years makes it impossible to assess the long-term trends. It would be helpful to see data for the years 2023-2024 to assess the long-term sustainability of the trend.",
+        "recommendation": "This chart appears to be an honest representation of the data.",
+        "raw_output": "The chart appears to be honest, with no obvious issues. However, the lack of data for the future years makes it impossible to assess the long-term trends. It would be helpful to see data for the years 2023-2024 to assess the long-term sustainability of the trend.",
+        "error": null
+      }
+    ],
+    "error": null
+  }
+]

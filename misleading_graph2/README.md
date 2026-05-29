@@ -1,0 +1,159 @@
+# Chart Misleading Detection
+
+Detects misleading or manipulative charts using **[ChartGemma](https://huggingface.co/ahmed-masry/chartgemma)** — a 3B vision-language model fine-tuned for chart understanding.
+
+## What it detects
+
+The model checks for 12 misleading design patterns from the MisViz taxonomy:
+
+| # | Pattern |
+|---|---------|
+| 1 | Truncated / manipulated axis |
+| 2 | Distorted proportions |
+| 3 | Dual or inconsistent axes |
+| 4 | Inverted axis |
+| 5 | Aspect ratio distortion |
+| 6 | Cherry-picked data range |
+| 7 | Misleading annotations or labels |
+| 8 | Omitted or hidden data |
+| 9 | Inappropriate chart type |
+| 10 | Misleading color / visual encoding |
+| 11 | Inconsistent intervals or axis breaks |
+| 12 | Misleading title or caption |
+
+## Output per chart
+
+```json
+{
+  "file": "chart.png",
+  "verdict": "Misleading",
+  "score": 7.5,
+  "score_normalized": 0.75,
+  "detected_issues": [
+    "Y-axis starts at 60 instead of 0, exaggerating the difference between bars",
+    "Title claims a dramatic increase but the actual change is only 3%"
+  ],
+  "explanation": "The bar chart uses a truncated y-axis starting at 60...",
+  "recommendation": "Check the actual axis range before drawing conclusions...",
+  "raw_output": "...",
+  "error": null
+}
+```
+
+- **score**: 0–10 (0 = honest, 10 = highly manipulative)
+- **score_normalized**: 0.0–1.0 version of the same score
+- **verdict**: `Not Misleading` | `Possibly Misleading` | `Misleading`
+
+---
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+> **GPU recommended.** The model is 3B parameters. On CPU it will work but take ~1–2 minutes per chart. On a GPU it takes ~5–10 seconds.
+
+---
+
+## Usage
+
+### Command line
+
+```bash
+# Single file
+python analyzer.py chart.png
+
+# Multiple files
+python analyzer.py chart1.png chart2.jpg chart3.png
+
+# Entire folder
+python analyzer.py ./charts/
+
+# Mix of files and folders, save JSON
+python analyzer.py chart.png ./more_charts/ --output results.json
+
+# JSON-only output (no human-readable report)
+python analyzer.py chart.png --json-only
+
+# Force CPU
+python analyzer.py chart.png --device cpu
+```
+
+### Python API
+
+```python
+from api import ChartAnalyzer
+
+# Load model once (downloads ~6 GB on first run)
+analyzer = ChartAnalyzer()
+
+# Analyze multiple files / folders
+results = analyzer.analyze(["chart1.png", "chart2.jpg", "./charts_folder/"])
+
+for r in results:
+    print(f"{r['file']}")
+    print(f"  Verdict : {r['verdict']}")
+    print(f"  Score   : {r['score']}/10  ({r['score_normalized']} normalized)")
+    print(f"  Issues  : {r['detected_issues']}")
+    print(f"  Why     : {r['explanation']}")
+    print()
+
+# Single image shortcut
+result = analyzer.analyze_single("suspicious_chart.png")
+print(result["verdict"])
+```
+
+---
+
+## Example output
+
+```
+══════════════════════════════════════════════════════════════════════
+  CHART MISLEADING DETECTION REPORT
+  Powered by ChartGemma (ahmed-masry/chartgemma)
+══════════════════════════════════════════════════════════════════════
+
+[1/2] bar_chart_truncated.png
+──────────────────────────────────────────────────────────────────────
+  🚨 Verdict   : Misleading
+  📊 Score     : 8.0/10  (normalized: 0.80)
+  🔍 Issues detected (2):
+       • Y-axis starts at 85 instead of 0, making a 3% difference look dramatic
+       • Title says "Massive Growth" but data shows only marginal change
+  📝 Explanation:
+     The bar chart employs a truncated y-axis starting at 85, which visually
+     amplifies small differences between bars. Combined with an alarmist title,
+     this chart is designed to mislead the reader about the magnitude of change.
+  💡 Recommendation:
+     Always check where the y-axis starts. Redraw with a zero baseline to see
+     the true scale of the differences.
+
+[2/2] line_chart_honest.png
+──────────────────────────────────────────────────────────────────────
+  ✅ Verdict   : Not Misleading
+  📊 Score     : 1.0/10  (normalized: 0.10)
+  🔍 Issues detected: None
+  📝 Explanation:
+     The line chart uses a zero-based y-axis, consistent intervals, and a
+     neutral title that accurately reflects the data trend shown.
+  💡 Recommendation:
+     This chart appears to be an honest representation of the data.
+
+══════════════════════════════════════════════════════════════════════
+  SUMMARY
+══════════════════════════════════════════════════════════════════════
+  File                                Verdict                Score
+  ─────────────────────────────────── ────────────────────── ──────
+  bar_chart_truncated.png             Misleading               8.0
+  line_chart_honest.png               Not Misleading           1.0
+══════════════════════════════════════════════════════════════════════
+```
+
+---
+
+## Notes
+
+- The model is downloaded automatically from Hugging Face on first run (~6 GB).
+- Supported image formats: PNG, JPG, JPEG, BMP, GIF, TIFF, WEBP.
+- The score and verdict are generated by ChartGemma via a structured prompt — they reflect the model's reasoning, not a hard-coded classifier.

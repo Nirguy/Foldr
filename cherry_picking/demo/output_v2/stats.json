@@ -1,0 +1,9 @@
+{
+  "score": 70,
+  "severity": "High",
+  "cherry_findings": 1,
+  "legitimate_aspects": 1,
+  "mitigating_factors": [
+    "Both significant and non-significant results are in the data"
+  ]
+}

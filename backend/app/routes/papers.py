@@ -32,12 +32,19 @@ def get_paper(paper_id: str):
     paper = PaperEntry(
         paper_id=entry["paper_id"],
         status=entry["status"],
+        current_step=entry.get("current_step"),
         metadata=metadata,
         content=entry.get("content"),
         skipped_pages=entry.get("skipped_pages", []),
         research_methods=entry.get("research_methods"),
         dataset_links=entry.get("dataset_links", []),
+        datasets=entry.get("datasets", []),
         visual_assets=entry.get("visual_assets", []),
+        image_evaluation=entry.get("image_evaluation", []),
+        metadata_evaluation=entry.get("metadata_evaluation"),
+        cherry_picking_evaluation=entry.get("cherry_picking_evaluation"),
+        lie_factor_evaluation=entry.get("lie_factor_evaluation"),
+        graph_evaluation=entry.get("graph_evaluation"),
     )
 
     return JSONResponse(status_code=200, content=paper.model_dump())

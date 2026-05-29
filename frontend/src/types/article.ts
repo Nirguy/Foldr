@@ -1,47 +1,71 @@
-export type ConsensusVerdict =
-  | "Mostly aligned"
-  | "Mixed evidence"
-  | "Contradicts consensus";
+// ─── Credibility ────────────────────────────────────────────────────────────
 
-export type BiasWarning =
-  | "Overconfident language"
-  | "Cherry-picked stats"
-  | "Misleading graphs"
-  | "Correlation vs causation"
-  | "Small sample size"
-  | "Funding conflict";
-
-export interface CredibilityScore {
-  score: number; // 1–10
+export interface CredibilityScores {
+  /** Overall credibility score 0–10 */
+  score: number;
+  /** Normalized citation count (MNCS) */
+  citationScore: number | null;
+  /** Number of retractions by the author */
+  authorRetractions: number;
+  /** Number of retractions by the journal */
+  journalRetractions: number;
+  /** Red flag: this specific article was retracted */
+  articleRetracted: boolean;
+  /** Red flag: journal is on predatory list */
+  journalPredatory: boolean;
+  /** Human-readable explanation of how the score was derived */
   explanation: string;
-  institutionKnown: boolean;
-  conflictsOfInterest: boolean;
 }
 
-export interface ConsensusCheck {
-  verdict: ConsensusVerdict;
-  reasoning: string;
+// ─── Bias ───────────────────────────────────────────────────────────────────
+
+export interface BiasScores {
+  /** Overall bias score 0–10 (higher = less biased) */
+  score: number;
+  /** Lie factor score 0–10 */
+  lieFactor: number | null;
+  /** Cherry picking score 0–10 */
+  cherryPickingScore: number | null;
+  /** Graph bias score 0–10 (placeholder for later) */
+  graphBias: number | null;
+  /** Human-readable explanation */
+  explanation: string;
 }
 
-export interface MethodologyReview {
-  score: number; // 1–10
-  weaknesses: string[];
+// ─── AI Detection ───────────────────────────────────────────────────────────
+
+export interface SuspiciousImage {
+  /** base64 PNG data */
+  imageData: string;
+  /** AI confidence score 0–1 */
+  aiScore: number;
+  /** Page number in the PDF */
+  pageNumber: number;
+  /** Reasons flagged */
+  reasons: string[];
 }
 
-export interface BiasDetection {
-  warnings: BiasWarning[];
-  confidenceLevel: "Low" | "Medium" | "High";
-  details: string;
+export interface AIDetectionScores {
+  /** Overall AI detection score 0–10 (higher = more natural/trustworthy) */
+  score: number;
+  /** AI-generated image score 0–10 */
+  imageScore: number;
+  /** AI-generated dataset score 0–10 */
+  datasetScore: number;
+  /** Suspicious images to display */
+  suspiciousImages: SuspiciousImage[];
+  /** Human-readable explanation */
+  explanation: string;
 }
 
-export interface SupportingContext {
-  summary: string;
-  keyConcerns: string[];
-  relatedStudies: {
-    title: string;
-    relation: "supports" | "contradicts";
-    url?: string;
-  }[];
+// ─── Article ────────────────────────────────────────────────────────────────
+
+export interface ExtractedAsset {
+  imageData: string;
+  pageNumber: number;
+  type: "chart" | "image";
+  width: number;
+  height: number;
 }
 
 export interface ArticleAnalysis {
@@ -50,63 +74,37 @@ export interface ArticleAnalysis {
   authors: string[];
   publishedYear: number;
   journal?: string;
-  credibility: CredibilityScore;
-  consensus: ConsensusCheck;
-  methodology: MethodologyReview;
-  bias: BiasDetection;
-  overallTrustScore: number; // 1–10, computed or provided
-  context: SupportingContext;
+  credibility: CredibilityScores;
+  bias: BiasScores;
+  aiDetection: AIDetectionScores;
+  /** Overall trust score 0–10 */
+  overallTrustScore: number;
+  /** Extracted visual assets for debugging */
+  extractedAssets: ExtractedAsset[];
 }
 
-/** Weights used to compute the ranking score (must sum to 1) */
+// ─── Ranking ────────────────────────────────────────────────────────────────
+
 export interface RankingWeights {
   credibility: number;
-  consensus: number;
-  methodology: number;
   bias: number;
+  aiDetection: number;
 }
 
 export const DEFAULT_WEIGHTS: RankingWeights = {
-  credibility: 0.3,
-  consensus: 0.25,
-  methodology: 0.25,
-  bias: 0.2,
+  credibility: 0.4,
+  bias: 0.3,
+  aiDetection: 0.3,
 };
-
-/** Map consensus verdict to a numeric score */
-export function consensusToScore(verdict: ConsensusVerdict): number {
-  switch (verdict) {
-    case "Mostly aligned":
-      return 10;
-    case "Mixed evidence":
-      return 5;
-    case "Contradicts consensus":
-      return 1;
-  }
-}
-
-/** Map bias confidence + warning count to a score (higher = less biased) */
-export function biasToScore(bias: BiasDetection): number {
-  const warningPenalty = bias.warnings.length * 1.5;
-  const confidencePenalty =
-    bias.confidenceLevel === "High" ? 3 : bias.confidenceLevel === "Medium" ? 1.5 : 0;
-  return Math.max(1, 10 - warningPenalty - confidencePenalty);
-}
 
 /** Compute weighted ranking score for an article */
 export function computeRankingScore(
   article: ArticleAnalysis,
   weights: RankingWeights
 ): number {
-  const credScore = article.credibility.score;
-  const consScore = consensusToScore(article.consensus.verdict);
-  const methScore = article.methodology.score;
-  const biasScore = biasToScore(article.bias);
-
   return (
-    credScore * weights.credibility +
-    consScore * weights.consensus +
-    methScore * weights.methodology +
-    biasScore * weights.bias
+    article.credibility.score * weights.credibility +
+    article.bias.score * weights.bias +
+    article.aiDetection.score * weights.aiDetection
   );
 }
