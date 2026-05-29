@@ -363,12 +363,22 @@ def analyze_graphs(data_path: str, image_paths: list) -> dict:
     """
     Main API. Analyze multiple graph images against a dataset.
 
+    Returns the average of all positive (> 0) lie factors across all input
+    graphs, minus 1. If no reasonable lie factor can be detected from any
+    graph, returns -1.
+
     Args:
         data_path: Path to CSV or Excel file.
         image_paths: List of graph image paths.
 
     Returns:
-        {"total": int, "passed": int, "failed": int, "results": [...]}
+        {
+            "lie_factor": float,  # average of positive lie factors - 1, or -1 if undetectable
+            "total": int,
+            "passed": int,
+            "failed": int,
+            "results": [...]
+        }
     """
     path = Path(data_path)
     if path.suffix in (".xlsx", ".xls"):
@@ -384,7 +394,24 @@ def analyze_graphs(data_path: str, image_paths: list) -> dict:
     results = [analyze_single(df, value_col, p) for p in image_paths]
 
     passed = sum(1 for r in results if r["passed"])
+
+    # Collect all positive, finite lie factors
+    positive_lie_factors = [
+        r["lie_factor"]
+        for r in results
+        if r["lie_factor"] is not None
+        and r["lie_factor"] > 0
+        and np.isfinite(r["lie_factor"])
+    ]
+
+    if positive_lie_factors:
+        avg_lie_factor = float(np.mean(positive_lie_factors)) - 1
+    else:
+        # Can't detect a reasonable lie factor from any graph
+        avg_lie_factor = -1
+
     return {
+        "lie_factor": round(avg_lie_factor, 3),
         "total": len(results),
         "passed": passed,
         "failed": len(results) - passed,
